@@ -8,6 +8,8 @@ import ImportModal from '../ImportModal';
 import GoogleSheetModal from '../GoogleSheetModal';
 import ViewDetailsModal from '../ViewDetailsModal';
 import AddAgentModal from '../AddAgentModal';
+import SessionLockModal from '../auth/SessionLockModal';
+import SessionTrackerModal from '../auth/SessionTrackerModal';
 import { useApp } from '../../context/AppContext';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
@@ -31,6 +33,8 @@ export default function MainLayout() {
     setIsGoogleOpen,
     isAddAgentOpen,
     setIsAddAgentOpen,
+    isSessionTrackerOpen,
+    setIsSessionTrackerOpen,
     refreshData
   } = useApp();
 
@@ -133,6 +137,14 @@ export default function MainLayout() {
       <AddAgentModal
         isOpen={isAddAgentOpen}
         onClose={() => setIsAddAgentOpen(false)}
+      />
+
+      {/* Security Modals */}
+      <SessionLockModal />
+      
+      <SessionTrackerModal
+        isOpen={isSessionTrackerOpen}
+        onClose={() => setIsSessionTrackerOpen(false)}
       />
 
     </div>

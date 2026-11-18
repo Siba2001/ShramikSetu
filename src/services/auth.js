@@ -1,13 +1,18 @@
-// Authentication & Divy-Impex Security System Service for ShramikSetu
+// Authentication, Session Tracking & Security Service for ShramikSetu
 
 const AUTH_STORAGE_KEY = 'shramiksetu_auth_user';
 const REMEMBER_KEY = 'shramiksetu_remember_flag';
 const SYSTEM_ACCOUNTS_KEY = 'shramiksetu_system_accounts';
 const MASTER_KEY_STORAGE = 'shramiksetu_master_key';
+const AUDIT_LOG_KEY = 'shramiksetu_audit_logs';
+const LOCK_STATE_KEY = 'shramiksetu_session_locked';
 
 // Default Master Key for the Security Gate
 export const DEFAULT_MASTER_TOKEN = 'SHRAMIK-SECURE-2026';
 export const LEGACY_MASTER_TOKEN = 'DIVY-SECURE-2026';
+
+// Inactivity timeout threshold in minutes (e.g. 20 minutes)
+export const INACTIVITY_TIMEOUT_MINUTES = 20;
 
 // Initial Seed Accounts
 const INITIAL_ACCOUNTS = [
@@ -37,7 +42,9 @@ const INITIAL_ACCOUNTS = [
   }
 ];
 
-// Load all managed system accounts
+// ==========================================
+// 1. SYSTEM ACCOUNTS REPOSITORY
+// ==========================================
 export function getSystemAccounts() {
   try {
     const raw = localStorage.getItem(SYSTEM_ACCOUNTS_KEY);
@@ -51,12 +58,10 @@ export function getSystemAccounts() {
     console.warn('Failed to parse system accounts, falling back to initial', e);
   }
 
-  // Seed default
   saveSystemAccounts(INITIAL_ACCOUNTS);
   return INITIAL_ACCOUNTS;
 }
 
-// Save system accounts
 export function saveSystemAccounts(accounts) {
   try {
     localStorage.setItem(SYSTEM_ACCOUNTS_KEY, JSON.stringify(accounts));
@@ -65,18 +70,18 @@ export function saveSystemAccounts(accounts) {
   }
 }
 
-// Verify Master Security Key / Token
+// ==========================================
+// 2. MASTER SECURITY KEY GATE
+// ==========================================
 export function verifyMasterKey(inputKey) {
   const clean = (inputKey || '').trim();
   if (!clean) return false;
 
-  // Check stored custom master key or default
   const storedMaster = localStorage.getItem(MASTER_KEY_STORAGE) || DEFAULT_MASTER_TOKEN;
   if (clean === storedMaster || clean === DEFAULT_MASTER_TOKEN || clean === LEGACY_MASTER_TOKEN) {
     return true;
   }
 
-  // Also allow the current Admin's password to unlock the security gate
   const accounts = getSystemAccounts();
   const adminAcc = accounts.find(a => a.username.toLowerCase() === 'admin');
   if (adminAcc && adminAcc.password === clean) {
@@ -86,7 +91,56 @@ export function verifyMasterKey(inputKey) {
   return false;
 }
 
-// Update User Password (Direct Recovery)
+// ==========================================
+// 3. AUDIT TRAIL & SESSION EVENT LOGGING
+// ==========================================
+export function getAuditLogs() {
+  try {
+    const raw = localStorage.getItem(AUDIT_LOG_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to read audit logs', e);
+  }
+  return [];
+}
+
+export function recordAuditEvent(action, details, level = 'info') {
+  try {
+    const logs = getAuditLogs();
+    const currentUser = getCurrentUser();
+    
+    const newEntry = {
+      id: `evt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      user: currentUser ? `@${currentUser.username}` : 'System',
+      role: currentUser ? currentUser.role : 'Guest',
+      action,
+      details,
+      level // 'info' | 'success' | 'warning' | 'security'
+    };
+
+    // Keep latest 100 entries to avoid localStorage overflow
+    const updated = [newEntry, ...logs].slice(0, 100);
+    localStorage.setItem(AUDIT_LOG_KEY, JSON.stringify(updated));
+    return newEntry;
+  } catch (e) {
+    console.error('Audit logging failed', e);
+  }
+}
+
+export function clearAuditLogs() {
+  try {
+    localStorage.removeItem(AUDIT_LOG_KEY);
+    recordAuditEvent('AUDIT_CLEARED', 'Security audit log history was cleared by administrator', 'warning');
+  } catch (e) {}
+}
+
+// ==========================================
+// 4. USER PASSWORD RECOVERY & PROVISIONING
+// ==========================================
 export function updateUserPassword(targetUsername, newPassword) {
   const accounts = getSystemAccounts();
   const cleanUser = (targetUsername || '').trim().toLowerCase();
@@ -114,8 +168,8 @@ export function updateUserPassword(targetUsername, newPassword) {
   }
 
   saveSystemAccounts(updated);
+  recordAuditEvent('PASSWORD_RESET', `Password updated for user @${cleanUser}`, 'security');
 
-  // If current logged-in user had their password changed, update session
   const currentUser = getCurrentUser();
   if (currentUser && currentUser.username.toLowerCase() === cleanUser) {
     currentUser.lastPasswordUpdate = new Date().toISOString();
@@ -132,7 +186,6 @@ export function updateUserPassword(targetUsername, newPassword) {
   return { success: true, message: `Password for @${targetUsername} updated successfully.` };
 }
 
-// Create New User ID & Password
 export function createSystemAccount({ username, fullName, role, email, password }) {
   const cleanUser = (username || '').trim().toLowerCase();
   const cleanPass = (password || '').trim();
@@ -178,11 +231,11 @@ export function createSystemAccount({ username, fullName, role, email, password 
 
   accounts.push(newAcc);
   saveSystemAccounts(accounts);
+  recordAuditEvent('ACCOUNT_CREATED', `New account created: @${cleanUser} (${newAcc.role})`, 'security');
 
   return { success: true, account: newAcc };
 }
 
-// Delete System Account
 export function deleteSystemAccount(username) {
   const cleanUser = (username || '').trim().toLowerCase();
   if (cleanUser === 'admin') {
@@ -197,10 +250,13 @@ export function deleteSystemAccount(username) {
   }
 
   saveSystemAccounts(filtered);
+  recordAuditEvent('ACCOUNT_DELETED', `Account @${cleanUser} was removed`, 'warning');
   return { success: true, message: `Account @${username} deleted successfully.` };
 }
 
-// Authenticate user on Login page
+// ==========================================
+// 5. SESSION AUTHENTICATION & LOGIN
+// ==========================================
 export function loginUser(username, password, remember = true) {
   const cleanUser = (username || '').trim().toLowerCase();
   const cleanPass = (password || '').trim();
@@ -211,12 +267,14 @@ export function loginUser(username, password, remember = true) {
   );
 
   if (!found) {
+    recordAuditEvent('LOGIN_FAILED', `Failed login attempt for username: "${username}"`, 'warning');
     return {
       success: false,
       error: 'Invalid Username or Security Password. Please check credentials or use the Security Portal.'
     };
   }
 
+  const now = new Date().toISOString();
   const sessionData = {
     username: found.username,
     fullName: found.fullName,
@@ -225,7 +283,8 @@ export function loginUser(username, password, remember = true) {
     email: found.email,
     avatar: found.avatar || 'AD',
     token: `sec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    loginAt: new Date().toISOString()
+    loginAt: now,
+    lastActiveAt: now
   };
 
   try {
@@ -237,9 +296,13 @@ export function loginUser(username, password, remember = true) {
       localStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(REMEMBER_KEY);
     }
+    // Remove any leftover lock state
+    sessionStorage.removeItem(LOCK_STATE_KEY);
   } catch (e) {
     console.warn('Storage save error:', e);
   }
+
+  recordAuditEvent('LOGIN_SUCCESS', `User @${found.username} signed in successfully`, 'success');
 
   return {
     success: true,
@@ -247,7 +310,6 @@ export function loginUser(username, password, remember = true) {
   };
 }
 
-// Read active session
 export function getCurrentUser() {
   try {
     const session = sessionStorage.getItem(AUTH_STORAGE_KEY);
@@ -263,12 +325,70 @@ export function getCurrentUser() {
   }
 }
 
-// Logout
+export function updateSessionLastActive() {
+  try {
+    const user = getCurrentUser();
+    if (!user) return;
+    
+    user.lastActiveAt = new Date().toISOString();
+    if (localStorage.getItem(AUTH_STORAGE_KEY)) {
+      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    }
+    if (sessionStorage.getItem(AUTH_STORAGE_KEY)) {
+      sessionStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(user));
+    }
+  } catch (e) {}
+}
+
+// ==========================================
+// 6. TERMINAL LOCK & INACTIVITY CONTROL
+// ==========================================
+export function lockSessionTerminal() {
+  try {
+    sessionStorage.setItem(LOCK_STATE_KEY, 'true');
+    recordAuditEvent('SESSION_LOCKED', 'Terminal locked due to user request or inactivity', 'info');
+  } catch (e) {}
+}
+
+export function unlockSessionTerminal(password) {
+  const user = getCurrentUser();
+  if (!user) return { success: false, error: 'No active session found.' };
+
+  const accounts = getSystemAccounts();
+  const acc = accounts.find(a => a.username.toLowerCase() === user.username.toLowerCase());
+
+  if (!acc || acc.password !== (password || '').trim()) {
+    recordAuditEvent('UNLOCK_FAILED', `Failed unlock attempt for @${user.username}`, 'warning');
+    return { success: false, error: 'Incorrect password. Please try again.' };
+  }
+
+  try {
+    sessionStorage.removeItem(LOCK_STATE_KEY);
+    updateSessionLastActive();
+    recordAuditEvent('SESSION_UNLOCKED', `Terminal unlocked by @${user.username}`, 'success');
+  } catch (e) {}
+
+  return { success: true };
+}
+
+export function isTerminalLocked() {
+  try {
+    return sessionStorage.getItem(LOCK_STATE_KEY) === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
 export function logoutUser() {
   try {
+    const user = getCurrentUser();
+    if (user) {
+      recordAuditEvent('LOGOUT', `User @${user.username} safely signed out`, 'info');
+    }
     sessionStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(AUTH_STORAGE_KEY);
     localStorage.removeItem(REMEMBER_KEY);
+    sessionStorage.removeItem(LOCK_STATE_KEY);
   } catch (e) {
     console.error('Logout error:', e);
   }

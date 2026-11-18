@@ -18,7 +18,19 @@ import {
   getGoogleScriptUrl,
   clearAllData as dbClearAllData
 } from '../services/db';
-import { getCurrentUser, loginUser, logoutUser } from '../services/auth';
+import {
+  getCurrentUser,
+  loginUser,
+  logoutUser,
+  getAuditLogs,
+  recordAuditEvent,
+  clearAuditLogs,
+  lockSessionTerminal,
+  unlockSessionTerminal,
+  isTerminalLocked as checkIsTerminalLocked,
+  updateSessionLastActive,
+  INACTIVITY_TIMEOUT_MINUTES
+} from '../services/auth';
 import { exportApplications } from '../utils/exportUtils';
 import { ALL_BLOCKS } from '../data/locationData';
 
@@ -28,6 +40,10 @@ export function AppProvider({ children }) {
   // Authentication & Security state
   const [user, setUser] = useState(() => getCurrentUser());
   const isAuthenticated = Boolean(user && user.token);
+  const [isTerminalLocked, setIsTerminalLocked] = useState(() => checkIsTerminalLocked());
+  const [auditLogs, setAuditLogs] = useState(() => getAuditLogs());
+  const [isSessionTrackerOpen, setIsSessionTrackerOpen] = useState(false);
+  const [sessionDuration, setSessionDuration] = useState('0m 00s');
 
   const [applications, setApplications] = useState([]);
   const [archivedApplications, setArchivedApplications] = useState([]);
@@ -74,8 +90,97 @@ export function AppProvider({ children }) {
   const handleLogout = () => {
     logoutUser();
     setUser(null);
+    setIsTerminalLocked(false);
     showToast('info', 'You have been safely logged out.');
   };
+
+  const lockTerminal = () => {
+    lockSessionTerminal();
+    setIsTerminalLocked(true);
+    setAuditLogs(getAuditLogs());
+    showToast('info', 'Terminal locked.');
+  };
+
+  const unlockTerminal = (password) => {
+    const res = unlockSessionTerminal(password);
+    if (res.success) {
+      setIsTerminalLocked(false);
+      setAuditLogs(getAuditLogs());
+      showToast('success', 'Terminal unlocked. Welcome back.');
+    }
+    return res;
+  };
+
+  const recordAudit = (action, details, level = 'info') => {
+    recordAuditEvent(action, details, level);
+    setAuditLogs(getAuditLogs());
+  };
+
+  const clearAudit = () => {
+    clearAuditLogs();
+    setAuditLogs(getAuditLogs());
+    showToast('info', 'Audit logs cleared.');
+  };
+
+  // Inactivity & Session Duration Tracker
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    let lastInteraction = Date.now();
+
+    const handleUserActivity = () => {
+      lastInteraction = Date.now();
+      updateSessionLastActive();
+    };
+
+    window.addEventListener('mousemove', handleUserActivity);
+    window.addEventListener('keydown', handleUserActivity);
+    window.addEventListener('click', handleUserActivity);
+    window.addEventListener('scroll', handleUserActivity);
+
+    // Cross-tab sync
+    const handleStorageChange = (e) => {
+      if (e.key === 'shramiksetu_auth_user' && !e.newValue) {
+        setUser(null);
+      }
+      if (e.key === 'shramiksetu_audit_logs') {
+        setAuditLogs(getAuditLogs());
+      }
+      if (e.key === 'shramiksetu_session_locked') {
+        setIsTerminalLocked(e.newValue === 'true');
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // Live Clock Interval
+    const interval = setInterval(() => {
+      // 1. Inactivity check (20 mins)
+      const inactiveMinutes = (Date.now() - lastInteraction) / (1000 * 60);
+      if (inactiveMinutes >= INACTIVITY_TIMEOUT_MINUTES && !checkIsTerminalLocked()) {
+        lockSessionTerminal();
+        setIsTerminalLocked(true);
+        setAuditLogs(getAuditLogs());
+      }
+
+      // 2. Duration calculation
+      if (user?.loginAt) {
+        const diffMs = Math.max(0, Date.now() - new Date(user.loginAt).getTime());
+        const totalSec = Math.floor(diffMs / 1000);
+        const mins = Math.floor(totalSec / 60);
+        const secs = totalSec % 60;
+        setSessionDuration(`${mins}m ${secs < 10 ? '0' : ''}${secs}s`);
+      }
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('click', handleUserActivity);
+      window.removeEventListener('scroll', handleUserActivity);
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, user?.loginAt]);
 
   // Refresh from storage
   const refreshData = () => {
@@ -334,6 +439,15 @@ export function AppProvider({ children }) {
         isAuthenticated,
         handleLogin,
         handleLogout,
+        isTerminalLocked,
+        lockTerminal,
+        unlockTerminal,
+        auditLogs,
+        recordAudit,
+        clearAudit,
+        isSessionTrackerOpen,
+        setIsSessionTrackerOpen,
+        sessionDuration,
         applications,
         archivedApplications,
         districts,
