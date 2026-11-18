@@ -152,17 +152,9 @@ export function AppProvider({ children }) {
     };
     window.addEventListener('storage', handleStorageChange);
 
-    // Live Clock Interval
+    // Live Clock Interval for internal duration tracking
     const interval = setInterval(() => {
-      // 1. Inactivity check (20 mins)
-      const inactiveMinutes = (Date.now() - lastInteraction) / (1000 * 60);
-      if (inactiveMinutes >= INACTIVITY_TIMEOUT_MINUTES && !checkIsTerminalLocked()) {
-        lockSessionTerminal();
-        setIsTerminalLocked(true);
-        setAuditLogs(getAuditLogs());
-      }
-
-      // 2. Duration calculation
+      // Internal Duration calculation
       if (user?.loginAt) {
         const diffMs = Math.max(0, Date.now() - new Date(user.loginAt).getTime());
         const totalSec = Math.floor(diffMs / 1000);

@@ -132,17 +132,6 @@ export default function Navbar({ pageTitle = 'Dashboard' }) {
           <span>New Entry</span>
         </button>
 
-        {/* Session Tracking & Security Pill */}
-        <button
-          onClick={() => setIsSessionTrackerOpen(true)}
-          className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors shadow-2xs cursor-pointer"
-          title="Session Tracking & Security Audit Log"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <span className="text-slate-500 font-medium">Session:</span>
-          <span className="font-mono text-[11px] font-bold text-slate-800">{sessionDuration}</span>
-        </button>
-
         {/* Authenticated User Menu */}
         <div className="relative pl-2 border-l border-slate-200" ref={dropdownRef}>
           <button
@@ -188,21 +177,7 @@ export default function Navbar({ pageTitle = 'Dashboard' }) {
                 </div>
               </div>
 
-              <div className="px-2 py-1.5 space-y-1">
-                <button
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    setIsSessionTrackerOpen(true);
-                  }}
-                  className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-blue-700 hover:bg-blue-50/70 transition-colors text-left cursor-pointer"
-                >
-                  <span className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-blue-600" />
-                    <span>Session & Audit Trail</span>
-                  </span>
-                  <span className="text-[10px] font-mono text-slate-400">{sessionDuration}</span>
-                </button>
-
+              <div className="px-2 py-1.5">
                 <Link
                   to="/admin-security"
                   onClick={() => setDropdownOpen(false)}
@@ -216,26 +191,15 @@ export default function Navbar({ pageTitle = 'Dashboard' }) {
                 </Link>
               </div>
 
-              <div className="p-2 border-t border-slate-100 space-y-1">
-                <button
-                  onClick={() => {
-                    setDropdownOpen(false);
-                    lockTerminal();
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-amber-700 hover:bg-amber-50 transition-colors text-left cursor-pointer"
-                >
-                  <Clock className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Lock Terminal Now</span>
-                </button>
-
+              <div className="p-2 border-t border-slate-100">
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
                     handleLogout();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors text-left cursor-pointer"
                 >
-                  <LogOut className="w-3.5 h-3.5 text-rose-500" />
+                  <LogOut className="w-4 h-4 text-rose-500" />
                   <span>Sign Out</span>
                 </button>
               </div>

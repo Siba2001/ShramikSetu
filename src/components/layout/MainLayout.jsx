@@ -139,14 +139,6 @@ export default function MainLayout() {
         onClose={() => setIsAddAgentOpen(false)}
       />
 
-      {/* Security Modals */}
-      <SessionLockModal />
-      
-      <SessionTrackerModal
-        isOpen={isSessionTrackerOpen}
-        onClose={() => setIsSessionTrackerOpen(false)}
-      />
-
     </div>
   );
 }
