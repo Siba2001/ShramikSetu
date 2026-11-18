@@ -270,7 +270,7 @@ export function loginUser(username, password, remember = true) {
     recordAuditEvent('LOGIN_FAILED', `Failed login attempt for username: "${username}"`, 'warning');
     return {
       success: false,
-      error: 'Invalid Username or Security Password. Please check credentials or use the Security Portal.'
+      error: 'Invalid Username or Password. Please check credentials.'
     };
   }
 

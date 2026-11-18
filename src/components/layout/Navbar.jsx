@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import { 
   Menu, 
   ExternalLink, 
@@ -13,7 +12,6 @@ import {
   LogOut,
   ShieldCheck,
   ChevronDown,
-  KeyRound,
   Clock
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
@@ -155,43 +153,14 @@ export default function Navbar({ pageTitle = 'Dashboard' }) {
 
           {/* User Dropdown Menu */}
           {dropdownOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-scale-in">
-              <div className="px-4 py-3 border-b border-slate-100">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">
-                    {user?.username ? `@${user.username}` : 'Official User'}
-                  </span>
-                  <span className="flex items-center gap-1 text-[10px] text-emerald-600 font-semibold">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Verified</span>
-                  </span>
-                </div>
-                <div className="text-xs font-black text-slate-900 truncate">
-                  {user?.fullName || 'District Administrator'}
-                </div>
-                <div className="text-[11px] text-slate-500 truncate">
-                  {user?.role || 'Operations Lead'}
-                </div>
-                <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                  {user?.district || 'Odisha BOCW Board'}
+            <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200 py-1.5 z-50 animate-scale-in">
+              <div className="px-3.5 py-2.5 border-b border-slate-100">
+                <div className="text-xs font-bold text-slate-900 truncate">
+                  {user?.fullName || 'System Administrator'}
                 </div>
               </div>
 
-              <div className="px-2 py-1.5">
-                <Link
-                  to="/admin-security"
-                  onClick={() => setDropdownOpen(false)}
-                  className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-amber-800 hover:bg-amber-50/70 transition-colors"
-                >
-                  <span className="flex items-center gap-2">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Security Portal</span>
-                  </span>
-                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100/70 px-1.5 py-0.2 rounded">Gate</span>
-                </Link>
-              </div>
-
-              <div className="p-2 border-t border-slate-100">
+              <div className="p-1">
                 <button
                   onClick={() => {
                     setDropdownOpen(false);
