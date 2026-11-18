@@ -1,0 +1,144 @@
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { AppProvider } from './context/AppContext';
+import MainLayout from './components/layout/MainLayout';
+
+// Pages
+import LoginPage from './pages/LoginPage';
+import AdminSecurityPage from './pages/AdminSecurityPage';
+import DashboardPage from './pages/DashboardPage';
+import ApplicationModulePage from './pages/ApplicationModulePage';
+import AgentsPage from './pages/data/AgentsPage';
+import ArchivePage from './pages/ArchivePage';
+import ProtectedRoute from './components/auth/ProtectedRoute';
+
+// Icons
+import { 
+  FileText, 
+  CreditCard, 
+  HeartHandshake, 
+  Baby, 
+  Cross, 
+  GraduationCap 
+} from 'lucide-react';
+
+export default function App() {
+  return (
+    <AppProvider>
+      <BrowserRouter>
+        <Routes>
+          {/* Public Authentication & Security Routes */}
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/admin-security" element={<AdminSecurityPage />} />
+
+          {/* Protected Application Routes */}
+          <Route 
+            path="/" 
+            element={
+              <ProtectedRoute>
+                <MainLayout />
+              </ProtectedRoute>
+            }
+          >
+            
+            {/* Default redirect to Dashboard */}
+            <Route index element={<Navigate to="/dashboard" replace />} />
+            
+            {/* 1. Dashboard */}
+            <Route path="dashboard" element={<DashboardPage />} />
+
+            {/* 2. Application Modules */}
+            <Route 
+              path="applications/new-card" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="New Card"
+                  title="New Nirman Shramik Card"
+                  description="Registration of construction workers, Aadhaar linkage, and E-Sign pending verification"
+                  icon={FileText}
+                />
+              } 
+            />
+
+            <Route 
+              path="applications/card-renewal" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="Card Renewal"
+                  title="Card Renewal / Annual Contribution"
+                  description="Annual welfare contribution payment, card renewal, and resumption of registration"
+                  icon={CreditCard}
+                />
+              } 
+            />
+
+            {/* Redirect /applications/annual-contribution to unified card-renewal */}
+            <Route 
+              path="applications/annual-contribution" 
+              element={<Navigate to="/applications/card-renewal" replace />} 
+            />
+
+            <Route 
+              path="applications/marriage-benefit" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="Marriage Benefit Apply"
+                  title="Marriage Benefit Assistance"
+                  description="Financial assistance claims for registered construction workers or daughter marriage"
+                  icon={HeartHandshake}
+                />
+              } 
+            />
+
+            <Route 
+              path="applications/maternity-benefit" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="Maternity Benefit Apply"
+                  title="Maternity Benefit Assistance"
+                  description="Maternity financial support for registered female construction workers"
+                  icon={Baby}
+                />
+              } 
+            />
+
+            <Route 
+              path="applications/death-benefit" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="Death Benefit Apply"
+                  title="Death Benefit Assistance"
+                  description="Fatal accident, non-fatal injury, and natural death compensation claims"
+                  icon={Cross}
+                />
+              } 
+            />
+
+            <Route 
+              path="applications/education-assistance" 
+              element={
+                <ApplicationModulePage 
+                  serviceKey="Education Assistance Apply"
+                  title="Education Assistance Grants"
+                  description="Scholarships and financial education grants for children of registered workers"
+                  icon={GraduationCap}
+                />
+              } 
+            />
+
+            {/* 3. Agent Management */}
+            <Route path="data/agents" element={<AgentsPage />} />
+            <Route path="agents" element={<Navigate to="/data/agents" replace />} />
+
+            {/* 4. Completed Archive */}
+            <Route path="archive" element={<ArchivePage />} />
+
+            {/* Catch-all */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </AppProvider>
+  );
+}
