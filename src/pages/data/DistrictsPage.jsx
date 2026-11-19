@@ -80,8 +80,8 @@ export default function DistrictsPage() {
                 type="text"
                 value={newDistrictName}
                 onChange={(e) => setNewDistrictName(e.target.value)}
-                placeholder="e.g. Ganjam, Gajapati, Puri..."
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
+                placeholder="Enter district name..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
                 required
               />
             </div>
@@ -91,8 +91,8 @@ export default function DistrictsPage() {
                 type="text"
                 value={newDistrictCode}
                 onChange={(e) => setNewDistrictCode(e.target.value)}
-                placeholder="e.g. OD-GM"
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
+                placeholder="Enter district code..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
               />
             </div>
             <div>
@@ -101,8 +101,8 @@ export default function DistrictsPage() {
                 type="text"
                 value={newDistrictHq}
                 onChange={(e) => setNewDistrictHq(e.target.value)}
-                placeholder="e.g. Chhatrapur"
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20"
+                placeholder="Enter headquarter..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500/20 font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
               />
             </div>
           </div>

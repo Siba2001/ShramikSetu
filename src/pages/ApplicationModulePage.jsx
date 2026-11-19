@@ -64,6 +64,20 @@ export default function ApplicationModulePage({
     });
   }, [applications, serviceKey]);
 
+  const isNewCard = serviceKey === 'New Card';
+  const isRenewal = serviceKey === 'Card Renewal' || serviceKey === 'Annual Contribution';
+  const isDeath = serviceKey === 'Death Benefit Apply';
+  const isMaternity = serviceKey === 'Maternity Benefit Apply';
+  const totalCols = (isRenewal || isNewCard) ? 9 : 10;
+
+  const searchPlaceholder = useMemo(() => {
+    if (isRenewal) return `Search ${title} by Block, Card Holder Name, Card No, Track No, Agent...`;
+    if (isDeath) return `Search ${title} by Block, Card Holder Name, Card No, Track No, Agent, Remark...`;
+    if (isMaternity) return `Search ${title} by Block, Beneficiary Name, Card No, Track No, Agent, Remark...`;
+    if (isNewCard) return `Search ${title} by Block, Applicant Name, Aadhaar No, Track No, Agent...`;
+    return `Search ${title} by Name, Card, Aadhaar, Track...`;
+  }, [isRenewal, isDeath, isMaternity, isNewCard, title]);
+
   // Compute Module-specific stats
   const moduleStats = useMemo(() => {
     const total = moduleApplications.length;
@@ -265,7 +279,7 @@ export default function ApplicationModulePage({
               type="text"
               value={searchTerm}
               onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }}
-              placeholder={`Search ${title} by Name, Card, Aadhaar, Track...`}
+              placeholder={searchPlaceholder}
               className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50/70 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
             />
             {searchTerm && (
@@ -382,12 +396,21 @@ export default function ApplicationModulePage({
                   />
                 </th>
                 <th className="py-3 px-3 w-12 text-slate-400">SL</th>
-                <th className="py-3 px-4 font-bold text-slate-800">Beneficiary Name</th>
-                <th className="py-3 px-3">Card / Aadhaar No</th>
-                <th className="py-3 px-3">Track No</th>
                 <th className="py-3 px-3">Block</th>
-                <th className="py-3 px-3">Field Agent</th>
-                <th className="py-3 px-3">Remarks / Officer</th>
+                <th className="py-3 px-4 font-bold text-slate-800">
+                  {isRenewal || isDeath ? 'Card Holder Name' : isMaternity ? 'Beneficiary Name' : isNewCard ? 'Applicant Name' : 'Beneficiary Name'}
+                </th>
+                <th className="py-3 px-3">
+                  {isNewCard ? 'Aadhaar No' : (isRenewal || isDeath || isMaternity) ? 'Nirman Shramik Card No' : 'Card / Aadhaar No'}
+                </th>
+                <th className="py-3 px-3">Tracking No</th>
+                <th className="py-3 px-3">Agent Name</th>
+                {(isDeath || isMaternity) && (
+                  <th className="py-3 px-3">Remark / Notes</th>
+                )}
+                {(!isRenewal && !isNewCard && !isDeath && !isMaternity) && (
+                  <th className="py-3 px-3">Remarks / Officer</th>
+                )}
                 <th className="py-3 px-3">Status</th>
                 <th className="py-3 px-4 text-right">Actions</th>
               </tr>
@@ -396,7 +419,7 @@ export default function ApplicationModulePage({
             <tbody className="divide-y divide-slate-100">
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center text-slate-400">
+                  <td colSpan={totalCols} className="py-12 text-center text-slate-400">
                     <AlertCircle className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-slate-600">No applications found in this module</p>
                     <p className="text-xs text-slate-400 mt-0.5">Click "Add Application" above to add new records</p>
@@ -421,9 +444,18 @@ export default function ApplicationModulePage({
 
                       <td className="py-3 px-3 text-slate-400 font-mono text-[11px]">{sl}</td>
 
+                      {/* Block */}
+                      <td className="py-3 px-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
+                          <MapPin className="w-3 h-3 text-slate-400" />
+                          {app.block || 'General'}
+                        </span>
+                      </td>
+
+                      {/* Name */}
                       <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
-                          <span>{app.applicantName}</span>
+                          <span>{app.applicantName || '-'}</span>
                           {app.phone && (
                             <span title={`Phone: ${app.phone}`} className="text-slate-400">
                               <Phone className="w-3 h-3" />
@@ -432,12 +464,26 @@ export default function ApplicationModulePage({
                         </div>
                       </td>
 
+                      {/* Card / Aadhaar */}
                       <td className="py-3 px-3 font-mono text-slate-700 whitespace-nowrap">
-                        {app.cardNo && <div><span className="text-[10px] text-slate-400">Card:</span> <span className="font-semibold">{app.cardNo}</span></div>}
-                        {app.aadhaarNo && <div><span className="text-[10px] text-slate-400">Aadhaar:</span> <span className="font-semibold text-slate-600">{app.aadhaarNo}</span></div>}
-                        {!app.cardNo && !app.aadhaarNo && <span className="text-slate-300 italic">-</span>}
+                        {isNewCard ? (
+                          app.aadhaarNo ? (
+                            <span className="font-semibold text-slate-800">{app.aadhaarNo}</span>
+                          ) : <span className="text-slate-300 italic">-</span>
+                        ) : (isRenewal || isDeath || isMaternity) ? (
+                          app.cardNo ? (
+                            <span className="font-semibold text-slate-800">{app.cardNo}</span>
+                          ) : <span className="text-slate-300 italic">-</span>
+                        ) : (
+                          <>
+                            {app.cardNo && <div><span className="text-[10px] text-slate-400">Card:</span> <span className="font-semibold">{app.cardNo}</span></div>}
+                            {app.aadhaarNo && <div><span className="text-[10px] text-slate-400">Aadhaar:</span> <span className="font-semibold text-slate-600">{app.aadhaarNo}</span></div>}
+                            {!app.cardNo && !app.aadhaarNo && <span className="text-slate-300 italic">-</span>}
+                          </>
+                        )}
                       </td>
 
+                      {/* Track No */}
                       <td className="py-3 px-3 font-mono whitespace-nowrap">
                         {app.trackNo ? (
                           <div className="flex items-center space-x-1.5">
@@ -446,7 +492,7 @@ export default function ApplicationModulePage({
                             </span>
                             <button
                               onClick={() => handleCopyTrack(app.trackNo)}
-                              className="p-1 text-slate-400 hover:text-blue-600"
+                              className="p-1 text-slate-400 hover:text-blue-600 cursor-pointer"
                               title="Copy Track No"
                             >
                               {copiedTrack === app.trackNo ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
@@ -457,13 +503,7 @@ export default function ApplicationModulePage({
                         )}
                       </td>
 
-                      <td className="py-3 px-3 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1 font-medium text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[11px]">
-                          <MapPin className="w-3 h-3 text-slate-400" />
-                          {app.block || 'General'}
-                        </span>
-                      </td>
-
+                      {/* Agent */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         {app.agent ? (
                           <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-[11px] border border-indigo-100">
@@ -474,12 +514,25 @@ export default function ApplicationModulePage({
                         )}
                       </td>
 
-                      <td className="py-3 px-3 max-w-[180px] truncate" title={app.remarks || app.officer}>
-                        {app.officer && <div className="font-semibold text-slate-800 text-[11px] truncate">{app.officer}</div>}
-                        {app.remarks && <div className="text-[10.5px] text-slate-500 italic truncate">{app.remarks}</div>}
-                        {!app.officer && !app.remarks && <span className="text-slate-300 italic">-</span>}
-                      </td>
+                      {/* Remarks / Notes */}
+                      {(isDeath || isMaternity) && (
+                        <td className="py-3 px-3 max-w-[180px] truncate" title={app.remarks}>
+                          {app.remarks ? (
+                            <span className="text-[11px] text-slate-600">{app.remarks}</span>
+                          ) : (
+                            <span className="text-slate-300 italic">-</span>
+                          )}
+                        </td>
+                      )}
+                      {(!isRenewal && !isNewCard && !isDeath && !isMaternity) && (
+                        <td className="py-3 px-3 max-w-[180px] truncate" title={app.remarks || app.officer}>
+                          {app.officer && <div className="font-semibold text-slate-800 text-[11px] truncate">{app.officer}</div>}
+                          {app.remarks && <div className="text-[10.5px] text-slate-500 italic truncate">{app.remarks}</div>}
+                          {!app.officer && !app.remarks && <span className="text-slate-300 italic">-</span>}
+                        </td>
+                      )}
 
+                      {/* Status */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <select
                           value={app.status}

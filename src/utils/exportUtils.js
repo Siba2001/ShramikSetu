@@ -28,22 +28,85 @@ export function exportApplications(applications, options = {}) {
     filtered = filtered.filter(a => a.status.toLowerCase() === status.toLowerCase());
   }
 
-  // Format data for sheet
-  const exportRows = filtered.map((app, index) => ({
-    'SL NO': index + 1,
-    'APPLICANT NAME': app.applicantName,
-    'SERVICE TYPE': app.serviceType,
-    'CARD NO': app.cardNo || '',
-    'AADHAAR NO': app.aadhaarNo || '',
-    'TRACK NO': app.trackNo || '',
-    'BLOCK': app.block,
-    'AGENT / WORKER': app.agent || '',
-    'OFFICER / STAFF': app.officer || '',
-    'STATUS': app.status,
-    'PHONE NO': app.phone || '',
-    'REMARKS': app.remarks || '',
-    'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
-  }));
+  // Format data for sheet according to module form fields
+  const exportRows = filtered.map((app, index) => {
+    const s = (app.serviceType || service || '').toLowerCase();
+
+    // 1. Card Renewal
+    if (s.includes('renewal') || s.includes('contribution')) {
+      return {
+        'SL NO': index + 1,
+        'BLOCK': app.block || 'General',
+        'CARD HOLDER NAME': app.applicantName || '',
+        'NIRMAN SHRAMIK CARD NO': app.cardNo || '',
+        'TRACKING NUMBER': app.trackNo || '',
+        'AGENT NAME': app.agent || '',
+        'STATUS': app.status || 'Pending',
+        'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
+      };
+    }
+
+    // 2. Death Benefit
+    if (s.includes('death')) {
+      return {
+        'SL NO': index + 1,
+        'BLOCK': app.block || 'General',
+        'CARD HOLDER NAME': app.applicantName || '',
+        'NIRMAN SHRAMIK CARD NO': app.cardNo || '',
+        'TRACKING NUMBER': app.trackNo || '',
+        'AGENT NAME': app.agent || '',
+        'REMARK / NOTES': app.remarks || '',
+        'STATUS': app.status || 'Pending',
+        'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
+      };
+    }
+
+    // 3. Maternity Benefit
+    if (s.includes('maternity')) {
+      return {
+        'SL NO': index + 1,
+        'BLOCK': app.block || 'General',
+        'BENEFICIARY NAME': app.applicantName || '',
+        'NIRMAN SHRAMIK CARD NO': app.cardNo || '',
+        'TRACKING NUMBER': app.trackNo || '',
+        'AGENT NAME': app.agent || '',
+        'REMARK / NOTES': app.remarks || '',
+        'STATUS': app.status || 'Pending',
+        'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
+      };
+    }
+
+    // 4. New Card
+    if (s.includes('new card')) {
+      return {
+        'SL NO': index + 1,
+        'BLOCK': app.block || 'General',
+        'APPLICANT NAME': app.applicantName || '',
+        'AADHAAR NO': app.aadhaarNo || '',
+        'TRACKING NUMBER': app.trackNo || '',
+        'AGENT NAME': app.agent || '',
+        'STATUS': app.status || 'Pending',
+        'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
+      };
+    }
+
+    // 5. Default / All Modules
+    return {
+      'SL NO': index + 1,
+      'BLOCK': app.block || '',
+      'BENEFICIARY NAME': app.applicantName || '',
+      'SERVICE TYPE': app.serviceType || '',
+      'CARD NO': app.cardNo || '',
+      'AADHAAR NO': app.aadhaarNo || '',
+      'TRACK NO': app.trackNo || '',
+      'AGENT': app.agent || '',
+      'OFFICER': app.officer || '',
+      'STATUS': app.status || '',
+      'PHONE NO': app.phone || '',
+      'REMARKS': app.remarks || '',
+      'LAST UPDATED': app.updatedAt ? app.updatedAt.slice(0, 10) : ''
+    };
+  });
 
   const worksheet = XLSX.utils.json_to_sheet(exportRows);
 

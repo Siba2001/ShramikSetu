@@ -76,8 +76,8 @@ export default function QueriesPage() {
             rows={2}
             value={replyText}
             onChange={(e) => setReplyText(e.target.value)}
-            placeholder="Enter reply / correction notes (e.g. Photo & signature re-uploaded, Aadhar verified)..."
-            className="w-full px-3 py-2 text-xs bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            placeholder="Enter reply or correction notes..."
+            className="w-full px-3 py-2 text-xs bg-white border border-purple-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 font-normal placeholder:text-slate-400 placeholder:font-normal"
           />
 
           <div className="flex justify-end gap-2">

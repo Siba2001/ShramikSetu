@@ -10,6 +10,7 @@ import ViewDetailsModal from '../ViewDetailsModal';
 import AddAgentModal from '../AddAgentModal';
 import SessionLockModal from '../auth/SessionLockModal';
 import SessionTrackerModal from '../auth/SessionTrackerModal';
+import LogoutConfirmModal from '../auth/LogoutConfirmModal';
 import { useApp } from '../../context/AppContext';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
@@ -137,6 +138,16 @@ export default function MainLayout() {
       <AddAgentModal
         isOpen={isAddAgentOpen}
         onClose={() => setIsAddAgentOpen(false)}
+      />
+
+      {/* Logout Confirmation Permission Modal */}
+      <LogoutConfirmModal />
+
+      {/* Session Security Modals */}
+      <SessionLockModal />
+      <SessionTrackerModal
+        isOpen={isSessionTrackerOpen}
+        onClose={() => setIsSessionTrackerOpen(false)}
       />
 
     </div>

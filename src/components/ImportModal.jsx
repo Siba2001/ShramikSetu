@@ -178,8 +178,8 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }) {
                 type="text"
                 value={defaultBlock}
                 onChange={(e) => setDefaultBlock(e.target.value)}
-                placeholder="Digapahandi"
-                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500"
+                placeholder="Enter block name"
+                className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
               />
             </div>
 

@@ -66,6 +66,7 @@ export function AppProvider({ children }) {
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [isGoogleOpen, setIsGoogleOpen] = useState(false);
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
 
   // Toast
   const [toast, setToast] = useState(null);
@@ -87,11 +88,20 @@ export function AppProvider({ children }) {
     return res;
   };
 
-  const handleLogout = () => {
+  const handleLogout = (force = false) => {
+    if (!force) {
+      setIsLogoutConfirmOpen(true);
+      return;
+    }
     logoutUser();
     setUser(null);
     setIsTerminalLocked(false);
+    setIsLogoutConfirmOpen(false);
     showToast('info', 'You have been safely logged out.');
+  };
+
+  const cancelLogout = () => {
+    setIsLogoutConfirmOpen(false);
   };
 
   const lockTerminal = () => {
@@ -431,6 +441,9 @@ export function AppProvider({ children }) {
         isAuthenticated,
         handleLogin,
         handleLogout,
+        isLogoutConfirmOpen,
+        setIsLogoutConfirmOpen,
+        cancelLogout,
         isTerminalLocked,
         lockTerminal,
         unlockTerminal,

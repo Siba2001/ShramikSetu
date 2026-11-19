@@ -154,15 +154,15 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
 
           {/* 1. Name */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Agent / Worker Name *
             </label>
             <input
               type="text"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. Kalu, Litu, Daitari..."
-              className={`w-full px-3 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-semibold ${
+              placeholder="Enter agent name"
+              className={`w-full px-3 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal ${
                 errors.name ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
               }`}
             />
@@ -171,7 +171,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
 
           {/* 2. Mobile No */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Mobile Number (10 digits) *
             </label>
             <div className="relative">
@@ -181,8 +181,8 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
                 maxLength={10}
                 value={formData.mobile}
                 onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
-                placeholder="e.g. 9876543210"
-                className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border rounded-xl font-mono focus:ring-2 focus:ring-blue-500/20 ${
+                placeholder="Enter 10-digit mobile number"
+                className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${
                   errors.mobile ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
                 }`}
               />
@@ -192,7 +192,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
 
           {/* 3. Village */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
               Village / Locality *
             </label>
             <div className="relative">
@@ -201,8 +201,8 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
                 type="text"
                 value={formData.village}
                 onChange={(e) => setFormData({ ...formData, village: e.target.value })}
-                placeholder="e.g. Digapahandi, Sanakhemundi, Dabarasingi..."
-                className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 ${
+                placeholder="Enter village or locality"
+                className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${
                   errors.village ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
                 }`}
               />

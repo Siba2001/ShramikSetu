@@ -88,17 +88,9 @@ export default function Sidebar() {
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0">
-                <div className="flex items-center space-x-1.5">
-                  <span className="font-extrabold text-slate-900 text-base tracking-tight truncate">
-                    Shramik<span className="text-blue-600">Setu</span>
-                  </span>
-                  <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                    ODISHA
-                  </span>
-                </div>
-                <p className="text-[10px] text-slate-400 font-medium truncate">
-                  Admin & Operations Portal
-                </p>
+                <span className="font-extrabold text-slate-900 text-base tracking-tight truncate block">
+                  Shramik<span className="text-blue-600">Setu</span>
+                </span>
               </div>
             )}
           </div>

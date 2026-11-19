@@ -647,9 +647,9 @@ export default function AdminSecurityPage() {
                         type="text"
                         value={newUser.username}
                         onChange={(e) => setNewUser({ ...newUser, username: e.target.value })}
-                        placeholder="e.g. supervisor_g"
+                        placeholder="Enter username"
                         required
-                        className="block w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                        className="block w-full pl-10 pr-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
                       />
                     </div>
                     <p className="text-[11px] text-slate-400 mt-1 font-medium">
@@ -700,8 +700,8 @@ export default function AdminSecurityPage() {
                       type="email"
                       value={newUser.email}
                       onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                      placeholder="operator@shramiksetu.odisha.gov.in"
-                      className="block w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
+                      placeholder="Enter email address"
+                      className="block w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-blue-600 transition-all"
                     />
                   </div>
                 </div>

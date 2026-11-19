@@ -107,8 +107,8 @@ export default function BlocksPage() {
                 type="text"
                 value={newBlockName}
                 onChange={(e) => setNewBlockName(e.target.value)}
-                placeholder="e.g. Belguntha, Beguniapada..."
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl"
+                placeholder="Enter block name..."
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal"
                 required
               />
             </div>

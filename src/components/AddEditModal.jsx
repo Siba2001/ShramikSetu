@@ -1,15 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  X, 
-  Save, 
-  PlusCircle, 
-  User, 
-  CreditCard, 
-  Hash, 
-  MapPin, 
-  Phone, 
+import {
+  X,
+  Save,
+  PlusCircle,
+  User,
+  CreditCard,
+  Hash,
+  MapPin,
+  Phone,
   UserPlus,
-  FileText
+  FileText,
+  Cross,
+  Baby
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import AddAgentModal from './AddAgentModal';
@@ -62,7 +64,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
         trackNo: '',
         district: 'Ganjam',
         block: 'Digapahandi',
-        agent: allAgentsList[0] || '',
+        agent: '',
         officer: '',
         status: 'Pending',
         phone: '',
@@ -76,23 +78,77 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
   if (!isOpen) return null;
 
   const isNewCard = formData.serviceType === 'New Card';
+  const isRenewal = formData.serviceType === 'Card Renewal';
+  const isDeath = formData.serviceType === 'Death Benefit Apply';
+  const isMaternity = formData.serviceType === 'Maternity Benefit Apply';
 
   const validate = () => {
     const err = {};
-    if (!formData.applicantName.trim()) {
-      err.applicantName = 'Applicant name is required';
+
+    // 1. Block Validation (All Modules)
+    if (!formData.block || !formData.block.trim()) {
+      err.block = 'Block / Municipality is required';
     }
+
+    // 2. Name Validation (All Modules)
+    const nameTrimmed = (formData.applicantName || '').trim();
+    if (!nameTrimmed) {
+      err.applicantName = isMaternity
+        ? 'Beneficiary name is required'
+        : (isRenewal || isDeath)
+          ? 'Card holder name is required'
+          : 'Name is required';
+    } else if (nameTrimmed.length < 2) {
+      err.applicantName = 'Name must be at least 2 characters';
+    }
+
+    // 3. Scheme specific ID Validation
     if (isNewCard) {
-      if (!formData.aadhaarNo.trim()) {
-        err.aadhaarNo = 'Aadhaar number is required for New Card';
-      } else if (!/^\d{12}$/.test(formData.aadhaarNo.trim())) {
-        err.aadhaarNo = 'Aadhaar must be exactly 12 digits';
+      const aadhaarTrimmed = (formData.aadhaarNo || '').trim();
+      if (!aadhaarTrimmed) {
+        err.aadhaarNo = 'Aadhaar number is required';
+      } else if (!/^\d{12}$/.test(aadhaarTrimmed)) {
+        err.aadhaarNo = 'Aadhaar must be exactly 12 numeric digits';
+      }
+    } else if (isRenewal || isDeath || isMaternity) {
+      const cardTrimmed = (formData.cardNo || '').trim();
+      if (!cardTrimmed) {
+        err.cardNo = 'Nirman Shramik Card number is required';
+      } else if (cardTrimmed.length < 3) {
+        err.cardNo = 'Card number must be at least 3 characters';
       }
     } else {
-      if (!formData.cardNo.trim() && !formData.aadhaarNo.trim()) {
-        err.identity = 'Provide either Card No or Aadhaar No';
+      if (!formData.cardNo?.trim() && !formData.aadhaarNo?.trim()) {
+        err.cardNo = 'Provide either Card No or Aadhaar No';
+      } else if (formData.aadhaarNo?.trim() && !/^\d{12}$/.test(formData.aadhaarNo.trim())) {
+        err.aadhaarNo = 'Aadhaar must be exactly 12 numeric digits';
       }
     }
+
+    // 4. Tracking Number Validation (All Modules)
+    const trackTrimmed = (formData.trackNo || '').trim();
+    if (!trackTrimmed) {
+      err.trackNo = 'Tracking number is required';
+    } else if (trackTrimmed.length < 2) {
+      err.trackNo = 'Tracking number must be at least 2 characters';
+    }
+
+    // 5. Agent Name Validation (All Modules)
+    if (!formData.agent || !formData.agent.trim()) {
+      err.agent = 'Please select a field agent';
+    }
+
+    // 6. Remarks Validation (Death Benefit & Maternity Benefit)
+    if (isDeath) {
+      if (!formData.remarks || !formData.remarks.trim()) {
+        err.remarks = 'Remark / cause of death is required';
+      }
+    } else if (isMaternity) {
+      if (!formData.remarks || !formData.remarks.trim()) {
+        err.remarks = 'Remark / delivery details are required';
+      }
+    }
+
     setErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -111,53 +167,67 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
   return (
     <>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-        <div className="bg-white rounded-2xl max-w-xl w-full border border-slate-200 shadow-2xl my-8 overflow-hidden">
-          
+        <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200 shadow-2xl my-6 overflow-hidden">
+
           {/* Header */}
-          <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
+          <div className="px-5 py-3.5 border-b border-slate-200 flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
-                {isNewCard ? <FileText className="w-5 h-5" /> : <PlusCircle className="w-5 h-5" />}
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm">
+                {isNewCard ? <FileText className="w-4 h-4" /> : isRenewal ? <CreditCard className="w-4 h-4" /> : isDeath ? <Cross className="w-4 h-4" /> : isMaternity ? <Baby className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
               </div>
               <div>
-                <h2 className="text-base font-bold text-slate-900">
-                  {applicationToEdit 
+                <h2 className="text-sm font-bold text-slate-900">
+                  {applicationToEdit
                     ? `Edit Application: ${formData.applicantName || ''}`
-                    : isNewCard 
-                    ? 'New Card Application Form' 
-                    : 'New Application Entry'
+                    : isNewCard
+                      ? 'New Card Application Form'
+                      : isRenewal
+                        ? 'Card Renewal Application Form'
+                        : isDeath
+                          ? 'Death Benefit Application Form'
+                          : isMaternity
+                            ? 'Maternity Benefit Application Form'
+                            : 'New Application Entry'
                   }
                 </h2>
-                <p className="text-xs text-slate-500">
-                  {isNewCard 
-                    ? 'Simplified entry form: Name, Aadhaar No, Track No, Agent' 
-                    : 'Record beneficiary and scheme information'
+                <p className="text-[11px] text-slate-500">
+                  {applicationToEdit
+                    ? 'Update beneficiary details and records'
+                    : isNewCard
+                      ? 'New worker card registration'
+                      : isRenewal
+                        ? 'Card renewal and annual contribution'
+                        : isDeath
+                          ? 'Death benefit assistance application'
+                          : isMaternity
+                            ? 'Maternity financial assistance application'
+                            : 'Enter beneficiary and application details'
                   }
                 </p>
               </div>
             </div>
-            <button 
+            <button
               type="button"
-              onClick={onClose} 
+              onClick={onClose}
               className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors"
             >
-              <X className="w-5 h-5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Form Body */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-4">
-            
+          <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3">
+
             {/* If NOT editing, Scheme Selector */}
             {!applicationToEdit && (
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-3">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-3">
+                <label className="text-xs font-semibold text-slate-700">
                   Scheme / Application Type:
                 </label>
                 <select
                   value={formData.serviceType}
                   onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                  className="px-3 py-1.5 text-xs font-bold bg-white border border-slate-300 rounded-lg text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  className="px-2.5 py-1 text-xs font-medium bg-white border border-slate-300 rounded-md text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 >
                   <option value="New Card">New Nirman Shramik Card</option>
                   <option value="Card Renewal">Card Renewal / Annual Contribution</option>
@@ -171,21 +241,20 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
 
             {/* NEW CARD SIMPLIFIED FORM (Exactly matching user prompt & Excel image) */}
             {isNewCard ? (
-              <div className="space-y-4">
-                
+              <div className="space-y-3">
+
                 {/* 1. APPLICANT NAME */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     1. Applicant Name *
                   </label>
                   <input
                     type="text"
                     value={formData.applicantName}
                     onChange={(e) => setFormData({ ...formData, applicantName: e.target.value })}
-                    placeholder="Enter full name of worker (e.g. KAMALAKANTA BEHERA)"
-                    className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-bold uppercase text-slate-900 ${
-                      errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
-                    }`}
+                    placeholder="Enter applicant name"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal placeholder:normal-case ${errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
                   />
                   {errors.applicantName && (
                     <span className="text-xs text-rose-600 mt-1 block">{errors.applicantName}</span>
@@ -194,7 +263,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
 
                 {/* 2. AADHAAR NO */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     2. Aadhaar No (12 Digits) *
                   </label>
                   <input
@@ -202,10 +271,9 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                     maxLength={12}
                     value={formData.aadhaarNo}
                     onChange={(e) => setFormData({ ...formData, aadhaarNo: e.target.value.replace(/\D/g, '') })}
-                    placeholder="e.g. 298095275891"
-                    className={`w-full px-3.5 py-2.5 text-sm bg-white border rounded-xl font-mono font-bold tracking-wider text-slate-900 focus:ring-2 focus:ring-blue-500/20 ${
-                      errors.aadhaarNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
-                    }`}
+                    placeholder="Enter 12-digit Aadhaar number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${errors.aadhaarNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
                   />
                   {errors.aadhaarNo && (
                     <span className="text-xs text-rose-600 mt-1 block">{errors.aadhaarNo}</span>
@@ -214,28 +282,31 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
 
                 {/* 3. TRACKING NO */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    3. Tracking No
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    3. Tracking No *
                   </label>
                   <input
                     type="text"
                     value={formData.trackNo}
                     onChange={(e) => setFormData({ ...formData, trackNo: e.target.value })}
-                    placeholder="e.g. 037434 or 000274 (Govt tracking id)"
-                    className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl font-mono font-bold text-blue-700 focus:ring-2 focus:ring-blue-500/20"
+                    placeholder="Enter tracking number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${errors.trackNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                   />
+                  {errors.trackNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.trackNo}</span>
+                  )}
                 </div>
 
                 {/* 4. AGENT NAME (Dropdown + Add Agent Button) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                    <label className="text-xs font-semibold text-slate-700">
                       4. Agent Name (Select from Dropdown) *
                     </label>
                     <button
                       type="button"
                       onClick={() => setIsQuickAddAgentOpen(true)}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-800 hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
                     >
                       <UserPlus className="w-3.5 h-3.5" />
                       <span>+ Add Agent</span>
@@ -245,45 +316,428 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                   <select
                     value={formData.agent}
                     onChange={(e) => setFormData({ ...formData, agent: e.target.value })}
-                    className="w-full px-3.5 py-2.5 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500/20 font-semibold text-slate-800"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-800 ${errors.agent ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                   >
                     <option value="">-- Select Field Agent --</option>
                     {allAgentsList.map(ag => (
                       <option key={ag} value={ag}>{ag}</option>
                     ))}
                   </select>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator with mobile, village, and photo.
-                  </p>
+                  {errors.agent ? (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.agent}</span>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator.
+                    </p>
+                  )}
                 </div>
 
                 {/* Block Selector */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Target Block / Municipality
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    5. Target Block / Municipality *
                   </label>
                   <input
                     type="text"
                     list="new-card-blocks"
                     value={formData.block}
                     onChange={(e) => setFormData({ ...formData, block: e.target.value })}
-                    placeholder="e.g. Digapahandi, Sanakhemundi..."
-                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-xl font-medium"
+                    placeholder="Enter or select block"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.block ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                   />
                   <datalist id="new-card-blocks">
                     {allBlocksList.map(b => <option key={b} value={b} />)}
                   </datalist>
+                  {errors.block && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.block}</span>
+                  )}
+                </div>
+
+              </div>
+            ) : isRenewal ? (
+              /* CARD RENEWAL SIMPLIFIED FORM (Block, Name, Card No, Track No, Agent) */
+              <div className="space-y-3">
+
+                {/* 1. BLOCK */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    1. Block / Municipality *
+                  </label>
+                  <input
+                    type="text"
+                    list="renewal-blocks"
+                    value={formData.block}
+                    onChange={(e) => setFormData({ ...formData, block: e.target.value })}
+                    placeholder="Enter or select block"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.block ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  <datalist id="renewal-blocks">
+                    {allBlocksList.map(b => <option key={b} value={b} />)}
+                  </datalist>
+                  {errors.block && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.block}</span>
+                  )}
+                </div>
+
+                {/* 2. NAME */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    2. Card Holder Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.applicantName}
+                    onChange={(e) => setFormData({ ...formData, applicantName: e.target.value })}
+                    placeholder="Enter card holder name"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal placeholder:normal-case ${errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.applicantName && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.applicantName}</span>
+                  )}
+                </div>
+
+                {/* 3. CARD NO */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    3. Nirman Shramik Card No *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cardNo}
+                    onChange={(e) => setFormData({ ...formData, cardNo: e.target.value })}
+                    placeholder="Enter card number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal ${errors.cardNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.cardNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.cardNo}</span>
+                  )}
+                </div>
+
+                {/* 4. TRACKING NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    4. Tracking Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.trackNo}
+                    onChange={(e) => setFormData({ ...formData, trackNo: e.target.value })}
+                    placeholder="Enter tracking number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${errors.trackNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  {errors.trackNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.trackNo}</span>
+                  )}
+                </div>
+
+                {/* 5. AGENT NAME */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      5. Agent Name *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddAgentOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>+ Add Agent</span>
+                    </button>
+                  </div>
+
+                  <select
+                    value={formData.agent}
+                    onChange={(e) => setFormData({ ...formData, agent: e.target.value })}
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-800 ${errors.agent ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  >
+                    <option value="">-- Select Field Agent --</option>
+                    {allAgentsList.map(ag => (
+                      <option key={ag} value={ag}>{ag}</option>
+                    ))}
+                  </select>
+                  {errors.agent ? (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.agent}</span>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator.
+                    </p>
+                  )}
+                </div>
+
+              </div>
+            ) : isDeath ? (
+              /* DEATH BENEFIT SIMPLIFIED FORM (Block, Name, Card No, Track No, Agent, Remark) */
+              <div className="space-y-3">
+
+                {/* 1. BLOCK */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    1. Block / Municipality *
+                  </label>
+                  <input
+                    type="text"
+                    list="death-blocks"
+                    value={formData.block}
+                    onChange={(e) => setFormData({ ...formData, block: e.target.value })}
+                    placeholder="Enter or select block"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.block ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  <datalist id="death-blocks">
+                    {allBlocksList.map(b => <option key={b} value={b} />)}
+                  </datalist>
+                  {errors.block && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.block}</span>
+                  )}
+                </div>
+
+                {/* 2. NAME */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    2. Card Holder Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.applicantName}
+                    onChange={(e) => setFormData({ ...formData, applicantName: e.target.value })}
+                    placeholder="Enter card holder name"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal placeholder:normal-case ${errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.applicantName && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.applicantName}</span>
+                  )}
+                </div>
+
+                {/* 3. CARD NO */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    3. Nirman Shramik Card No *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cardNo}
+                    onChange={(e) => setFormData({ ...formData, cardNo: e.target.value })}
+                    placeholder="Enter card number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal ${errors.cardNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.cardNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.cardNo}</span>
+                  )}
+                </div>
+
+                {/* 4. TRACKING NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    4. Tracking Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.trackNo}
+                    onChange={(e) => setFormData({ ...formData, trackNo: e.target.value })}
+                    placeholder="Enter tracking number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${errors.trackNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  {errors.trackNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.trackNo}</span>
+                  )}
+                </div>
+
+                {/* 5. AGENT NAME */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      5. Agent Name (Select from Dropdown) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddAgentOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>+ Add Agent</span>
+                    </button>
+                  </div>
+
+                  <select
+                    value={formData.agent}
+                    onChange={(e) => setFormData({ ...formData, agent: e.target.value })}
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-800 ${errors.agent ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  >
+                    <option value="">-- Select Field Agent --</option>
+                    {allAgentsList.map(ag => (
+                      <option key={ag} value={ag}>{ag}</option>
+                    ))}
+                  </select>
+                  {errors.agent ? (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.agent}</span>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator.
+                    </p>
+                  )}
+                </div>
+
+                {/* 6. REMARK */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    6. Remark / Notes *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.remarks}
+                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                    placeholder="Enter remarks or notes"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.remarks ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  {errors.remarks && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.remarks}</span>
+                  )}
+                </div>
+
+              </div>
+            ) : isMaternity ? (
+              /* MATERNITY BENEFIT SIMPLIFIED FORM (Block, Beneficiary Name, Card No, Track No, Agent, Remark) */
+              <div className="space-y-3">
+
+                {/* 1. BLOCK */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    1. Block / Municipality *
+                  </label>
+                  <input
+                    type="text"
+                    list="maternity-blocks"
+                    value={formData.block}
+                    onChange={(e) => setFormData({ ...formData, block: e.target.value })}
+                    placeholder="Enter or select block"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.block ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  <datalist id="maternity-blocks">
+                    {allBlocksList.map(b => <option key={b} value={b} />)}
+                  </datalist>
+                  {errors.block && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.block}</span>
+                  )}
+                </div>
+
+                {/* 2. BENEFICIARY NAME */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    2. Beneficiary Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.applicantName}
+                    onChange={(e) => setFormData({ ...formData, applicantName: e.target.value })}
+                    placeholder="Enter beneficiary name"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal placeholder:normal-case ${errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.applicantName && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.applicantName}</span>
+                  )}
+                </div>
+
+                {/* 3. CARD NO */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    3. Nirman Shramik Card No *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.cardNo}
+                    onChange={(e) => setFormData({ ...formData, cardNo: e.target.value })}
+                    placeholder="Enter card number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal ${errors.cardNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'
+                      }`}
+                  />
+                  {errors.cardNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.cardNo}</span>
+                  )}
+                </div>
+
+                {/* 4. TRACKING NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    4. Tracking Number *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.trackNo}
+                    onChange={(e) => setFormData({ ...formData, trackNo: e.target.value })}
+                    placeholder="Enter tracking number"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 placeholder:font-normal focus:ring-2 focus:ring-blue-500/20 ${errors.trackNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  {errors.trackNo && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.trackNo}</span>
+                  )}
+                </div>
+
+                {/* 5. AGENT NAME */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs font-semibold text-slate-700">
+                      5. Agent Name (Select from Dropdown) *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddAgentOpen(true)}
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 hover:underline"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>+ Add Agent</span>
+                    </button>
+                  </div>
+
+                  <select
+                    value={formData.agent}
+                    onChange={(e) => setFormData({ ...formData, agent: e.target.value })}
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl focus:ring-2 focus:ring-blue-500/20 font-normal text-slate-800 ${errors.agent ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  >
+                    <option value="">-- Select Field Agent --</option>
+                    {allAgentsList.map(ag => (
+                      <option key={ag} value={ag}>{ag}</option>
+                    ))}
+                  </select>
+                  {errors.agent ? (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.agent}</span>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 mt-1">
+                      Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator.
+                    </p>
+                  )}
+                </div>
+
+                {/* 6. REMARK */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    6. Remark / Notes *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.remarks}
+                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                    placeholder="Enter remarks or notes"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.remarks ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                  />
+                  {errors.remarks && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.remarks}</span>
+                  )}
                 </div>
 
               </div>
             ) : (
-              /* GENERAL APPLICATION FORM (For Card Renewal, Maternity, Marriage, Death, etc.) */
-              <div className="space-y-4">
-                
+              /* GENERAL APPLICATION FORM (For Maternity, Marriage, Education, etc.) */
+              <div className="space-y-3">
+
                 {/* Block & Status */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Block *
                     </label>
                     <input
@@ -291,22 +745,25 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                       list="general-blocks"
                       value={formData.block}
                       onChange={(e) => setFormData({ ...formData, block: e.target.value })}
-                      placeholder="e.g. Digapahandi"
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl"
+                      placeholder="Enter or select block"
+                      className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 ${errors.block ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                     />
                     <datalist id="general-blocks">
                       {allBlocksList.map(b => <option key={b} value={b} />)}
                     </datalist>
+                    {errors.block && (
+                      <span className="text-xs text-rose-600 mt-1 block">{errors.block}</span>
+                    )}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Status *
                     </label>
                     <select
                       value={formData.status}
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-bold text-slate-800"
+                      className="w-full px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl font-normal text-slate-800"
                     >
                       <option value="Pending">Pending</option>
                       <option value="E-Sign Pending">E-Sign Pending</option>
@@ -321,36 +778,37 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
 
                 {/* Name */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Beneficiary Name *
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Card Holder Name *
                   </label>
                   <input
                     type="text"
                     value={formData.applicantName}
                     onChange={(e) => setFormData({ ...formData, applicantName: e.target.value })}
-                    placeholder="e.g. SANTOSH KUMAR SAHU"
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl uppercase font-semibold"
+                    placeholder="Enter card holder name"
+                    className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 placeholder:font-normal placeholder:normal-case ${errors.applicantName ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                   />
                   {errors.applicantName && <span className="text-xs text-rose-600 mt-1 block">{errors.applicantName}</span>}
                 </div>
 
                 {/* Card No & Aadhaar */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Nirman Shramik Card No
                     </label>
                     <input
                       type="text"
                       value={formData.cardNo}
                       onChange={(e) => setFormData({ ...formData, cardNo: e.target.value })}
-                      placeholder="e.g. 137246"
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-mono font-bold"
+                      placeholder="Enter card number"
+                      className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 ${errors.cardNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                     />
+                    {errors.cardNo && <span className="text-xs text-rose-600 mt-1 block">{errors.cardNo}</span>}
                   </div>
 
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Aadhaar No
                     </label>
                     <input
@@ -358,36 +816,38 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                       maxLength={12}
                       value={formData.aadhaarNo}
                       onChange={(e) => setFormData({ ...formData, aadhaarNo: e.target.value.replace(/\D/g, '') })}
-                      placeholder="e.g. 767833210175"
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-mono"
+                      placeholder="Enter 12-digit Aadhaar number"
+                      className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 ${errors.aadhaarNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                     />
+                    {errors.aadhaarNo && <span className="text-xs text-rose-600 mt-1 block">{errors.aadhaarNo}</span>}
                   </div>
                 </div>
 
                 {/* Track No & Agent Dropdown */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Track No
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Track No *
                     </label>
                     <input
                       type="text"
                       value={formData.trackNo}
                       onChange={(e) => setFormData({ ...formData, trackNo: e.target.value })}
-                      placeholder="e.g. 097313"
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-mono font-bold text-blue-700"
+                      placeholder="Enter tracking number"
+                      className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 ${errors.trackNo ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                     />
+                    {errors.trackNo && <span className="text-xs text-rose-600 mt-1 block">{errors.trackNo}</span>}
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                        Field Agent
+                      <label className="text-xs font-semibold text-slate-700">
+                        Field Agent *
                       </label>
                       <button
                         type="button"
                         onClick={() => setIsQuickAddAgentOpen(true)}
-                        className="text-[11px] font-bold text-blue-600 hover:underline"
+                        className="text-[11px] font-semibold text-blue-600 hover:underline"
                       >
                         + Add Agent
                       </button>
@@ -395,27 +855,28 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                     <select
                       value={formData.agent}
                       onChange={(e) => setFormData({ ...formData, agent: e.target.value })}
-                      className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl font-semibold text-slate-800"
+                      className={`w-full px-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 ${errors.agent ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
                     >
                       <option value="">-- Select Agent --</option>
                       {allAgentsList.map(ag => (
                         <option key={ag} value={ag}>{ag}</option>
                       ))}
                     </select>
+                    {errors.agent && <span className="text-xs text-rose-600 mt-1 block">{errors.agent}</span>}
                   </div>
                 </div>
 
                 {/* Remarks */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Remarks / Scheme Notes
                   </label>
                   <input
                     type="text"
                     value={formData.remarks}
                     onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                    placeholder="Notes or query description..."
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl"
+                    placeholder="Enter remarks or notes"
+                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl font-normal text-slate-800 placeholder:text-slate-400"
                   />
                 </div>
 
@@ -423,20 +884,20 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
             )}
 
             {/* Footer */}
-            <div className="pt-3 border-t border-slate-200 flex items-center justify-end space-x-2">
+            <div className="pt-2.5 border-t border-slate-200 flex items-center justify-end space-x-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-xl transition-all shadow-md shadow-blue-600/25 flex items-center gap-2"
+                className="px-4 py-2 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg transition-all shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
-                <Save className="w-4 h-4" />
-                <span>{applicationToEdit ? 'Save Changes' : isNewCard ? 'Register New Card' : 'Save Application'}</span>
+                <Save className="w-3.5 h-3.5" />
+                <span>{applicationToEdit ? 'Save Changes' : isNewCard ? 'Register New Card' : isRenewal ? 'Register Card Renewal' : isDeath ? 'Register Death Benefit' : isMaternity ? 'Register Maternity Benefit' : 'Save Application'}</span>
               </button>
             </div>
 
