@@ -1,6 +1,7 @@
 import { INITIAL_APPLICATIONS } from '../data/initialData';
 import { INITIAL_DISTRICTS } from '../data/locationData';
 import { INITIAL_AGENTS } from '../data/agentData';
+import { GOOGLE_SCRIPT_WEB_APP_URL } from '../config/backendConfig';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
 const COMPLETED_ARCHIVE_KEY = 'shramik_setu_completed_archive_v2';
@@ -8,22 +9,21 @@ const GOOGLE_SCRIPT_URL_KEY = 'shramik_setu_gas_url_v1';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
 const AGENTS_STORAGE_KEY = 'shramik_setu_agents_v1';
 
+export const PRODUCTION_GOOGLE_SCRIPT_URL = GOOGLE_SCRIPT_WEB_APP_URL;
+
 /**
- * Get configured Google Apps Script Web App URL (if any)
+ * Get configured Google Apps Script Web App URL
+ * Maintained securely directly in code to avoid exposing or tampering in the UI
  */
 export function getGoogleScriptUrl() {
-  return localStorage.getItem(GOOGLE_SCRIPT_URL_KEY) || '';
+  return GOOGLE_SCRIPT_WEB_APP_URL;
 }
 
 /**
- * Save Google Apps Script Web App URL
+ * Save Google Apps Script Web App URL (Deprecated - Maintained in code)
  */
 export function setGoogleScriptUrl(url) {
-  if (url) {
-    localStorage.setItem(GOOGLE_SCRIPT_URL_KEY, url.trim());
-  } else {
-    localStorage.removeItem(GOOGLE_SCRIPT_URL_KEY);
-  }
+  // Maintained in code
 }
 
 /**
@@ -146,6 +146,18 @@ export function addAgent(agentData) {
   };
   agents.unshift(newAgent);
   saveAgents(agents);
+
+  const gasUrl = getGoogleScriptUrl();
+  if (gasUrl) {
+    try {
+      fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'addAgent', payload: newAgent })
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
   return newAgent;
 }
 
@@ -197,8 +209,21 @@ export function updateAgent(id, updates) {
  */
 export function deleteAgent(id) {
   const agents = loadAgents();
+  const target = agents.find(a => a.id === id || a.name === id);
   const filtered = agents.filter(a => a.id !== id && a.name !== id);
   saveAgents(filtered);
+
+  const gasUrl = getGoogleScriptUrl();
+  if (gasUrl) {
+    try {
+      fetch(gasUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'deleteAgent', payload: { id, name: target ? target.name : id } })
+      }).catch(() => {});
+    } catch (e) {}
+  }
+
   return filtered;
 }
 
@@ -437,14 +462,38 @@ export async function fetchFromGoogleSheet() {
   const gasUrl = getGoogleScriptUrl();
   if (!gasUrl) throw new Error('Google Apps Script URL is not configured.');
 
+  // 1. Fetch Active Applications
   const res = await fetch(`${gasUrl}?action=getAll`);
   const data = await res.json();
   if (!data.success) throw new Error(data.error || 'Failed to fetch from Google Sheet');
 
-  if (Array.isArray(data.data) && data.data.length > 0) {
+  if (Array.isArray(data.data)) {
     saveApplications(data.data);
   }
-  return data.data;
+
+  // 2. Fetch Archived Applications
+  try {
+    const archRes = await fetch(`${gasUrl}?action=getArchived`);
+    const archData = await archRes.json();
+    if (archData.success && Array.isArray(archData.data)) {
+      saveArchivedApplications(archData.data);
+    }
+  } catch (e) {
+    console.warn('Archive sync notice:', e);
+  }
+
+  // 3. Fetch Agents
+  try {
+    const agentRes = await fetch(`${gasUrl}?action=getAgents`);
+    const agentData = await agentRes.json();
+    if (agentData.success && Array.isArray(agentData.agents) && agentData.agents.length > 0) {
+      saveAgents(agentData.agents);
+    }
+  } catch (e) {
+    console.warn('Agent sync notice:', e);
+  }
+
+  return data.data || [];
 }
 
 /**

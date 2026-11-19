@@ -79,9 +79,9 @@ export function AppProvider({ children }) {
   };
 
   // Auth actions
-  const handleLogin = (username, password, remember) => {
-    const res = loginUser(username, password, remember);
-    if (res.success) {
+  const handleLogin = async (username, password, remember) => {
+    const res = await loginUser(username, password, remember);
+    if (res.success && res.user) {
       setUser(res.user);
       showToast('success', `Welcome back, ${res.user.fullName}!`);
     }

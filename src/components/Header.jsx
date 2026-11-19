@@ -52,20 +52,6 @@ export default function Header({
           {/* Right Action Controls */}
           <div className="flex items-center space-x-2 sm:space-x-3">
             
-            {/* Google Sheet Connection Status Pill */}
-            <button
-              onClick={onOpenGoogleModal}
-              className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                gasUrl
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-                  : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-              }`}
-              title="Configure Google Sheet / Google Apps Script Database"
-            >
-              <Database className="w-3.5 h-3.5" />
-              <span>{gasUrl ? 'Google Sheet Active' : 'Local Storage Mode'}</span>
-            </button>
-
             {/* Archive / Completed records button */}
             <button
               onClick={onOpenArchiveModal}

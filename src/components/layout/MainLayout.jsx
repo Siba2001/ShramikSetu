@@ -96,10 +96,10 @@ export default function MainLayout() {
         {/* Footer */}
         <footer className="bg-white border-t border-slate-200 py-3.5 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
           <div>
-            ShramikSetu Management System • Private Operations Portal
+            ShramikSetu Management System • Beneficiary Operations Portal
           </div>
           <div className="flex items-center gap-3 text-slate-400">
-            <span>React • Vite • Tailwind • Google Apps Script</span>
+            <span>Odisha Building &amp; Other Construction Workers' Welfare Board</span>
           </div>
         </footer>
 

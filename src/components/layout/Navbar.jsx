@@ -87,20 +87,6 @@ export default function Navbar({ pageTitle = 'Dashboard' }) {
       {/* Right Controls */}
       <div className="flex items-center space-x-2 sm:space-x-3">
         
-        {/* Google Sheet Sync Indicator */}
-        <button
-          onClick={() => setIsGoogleOpen(true)}
-          className={`hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all ${
-            gasUrl
-              ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100'
-              : 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100'
-          }`}
-          title="Google Sheet Live Database Sync"
-        >
-          <Database className="w-3.5 h-3.5" />
-          <span className="hidden md:inline">{gasUrl ? 'Google Sheet Active' : 'Local Storage Mode'}</span>
-        </button>
-
         {/* Import Excel Button */}
         <button
           onClick={() => setIsImportOpen(true)}

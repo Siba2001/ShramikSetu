@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { 
-  Lock, 
-  User, 
-  Eye, 
-  EyeOff, 
-  ArrowRight, 
+import {
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  ArrowRight,
   AlertCircle
 } from 'lucide-react';
 
@@ -38,7 +38,7 @@ export default function LoginPage() {
   useEffect(() => {
     const handleMouseMove = (e) => {
       setMousePos({ x: e.clientX, y: e.clientY });
-      
+
       const centerX = window.innerWidth / 2;
       const centerY = window.innerHeight / 2;
       const offsetX = (e.clientX - centerX) / 45;
@@ -144,7 +144,7 @@ export default function LoginPage() {
   }, [mousePos]);
 
   // Handle Form Submit
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
 
@@ -155,8 +155,8 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    setTimeout(() => {
-      const res = handleLogin(username, password, rememberMe);
+    try {
+      const res = await handleLogin(username, password, rememberMe);
       setLoading(false);
 
       if (res.success) {
@@ -164,14 +164,17 @@ export default function LoginPage() {
       } else {
         setError(res.error || 'Invalid credentials. Please verify your login details.');
       }
-    }, 400);
+    } catch (err) {
+      setLoading(false);
+      setError('Authentication failed. Please verify credentials or backend connection.');
+    }
   };
 
   return (
     <div className="min-h-screen bg-[#080D1A] text-slate-100 flex flex-col justify-center items-center py-12 px-4 sm:px-6 relative overflow-hidden font-sans select-none">
-      
+
       {/* 1. Cursor-Reactive Ambient Spotlight Glow */}
-      <div 
+      <div
         className="pointer-events-none fixed inset-0 z-0 transition-opacity duration-300"
         style={{
           background: `radial-gradient(750px circle at ${mousePos.x}px ${mousePos.y}px, rgba(37, 99, 235, 0.13), transparent 75%)`
@@ -179,7 +182,7 @@ export default function LoginPage() {
       />
 
       {/* 2. Full-Screen Architectural Blueprint Grid (opacity: 0.04) */}
-      <div 
+      <div
         className="pointer-events-none fixed inset-0 z-0 opacity-[0.04]"
         style={{
           backgroundImage: `
@@ -191,20 +194,20 @@ export default function LoginPage() {
       />
 
       {/* 3. HTML5 Canvas: Structural Data Pulses & Glow Nodes */}
-      <canvas 
-        ref={canvasRef} 
-        className="pointer-events-none fixed inset-0 z-0" 
+      <canvas
+        ref={canvasRef}
+        className="pointer-events-none fixed inset-0 z-0"
       />
 
       {/* 4. Fine Architectural SVG Linework: Konark Compass & Parabolic Bridge Arches */}
-      <div 
+      <div
         className="pointer-events-none fixed inset-0 z-0 flex items-center justify-center transition-transform duration-300 ease-out"
         style={{
           transform: `translate3d(${parallaxOffset.x}px, ${parallaxOffset.y}px, 0)`
         }}
       >
-        <svg 
-          viewBox="0 0 1200 800" 
+        <svg
+          viewBox="0 0 1200 800"
           className="w-[1400px] h-[950px] opacity-[0.055] stroke-white fill-none"
           strokeWidth="1"
         >
@@ -214,7 +217,7 @@ export default function LoginPage() {
           <circle cx="600" cy="360" r="200" strokeDasharray="1 4" />
           <circle cx="600" cy="360" r="140" />
           <circle cx="600" cy="360" r="60" />
-          
+
           {/* Azimuth Spokes */}
           {Array.from({ length: 24 }).map((_, i) => {
             const rad = (i * 15 * Math.PI) / 180;
@@ -229,7 +232,7 @@ export default function LoginPage() {
           <path d="M 50 780 Q 600 380 1150 780" strokeWidth="1.8" />
           <path d="M 120 780 Q 600 440 1080 780" strokeWidth="1.2" strokeDasharray="6 4" />
           <path d="M 200 780 Q 600 500 1000 780" strokeWidth="0.8" />
-          
+
           {/* Vertical Hangers */}
           {Array.from({ length: 21 }).map((_, idx) => {
             const x = 200 + idx * 40;
@@ -241,38 +244,38 @@ export default function LoginPage() {
 
       {/* Main Container */}
       <div className="w-full max-w-[420px] relative z-10 space-y-6">
-        
+
         {/* ======================================================== */}
         {/* BRAND LOGO & HEADER (Centered Above Card)                */}
         {/* ======================================================== */}
         <div className="text-center flex flex-col items-center">
-          
+
           {/* 3D-layered beveled cobalt blue square icon badge (56px x 56px, rounded-2xl) */}
           <div className="relative group mb-3">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-800 p-0.5 shadow-[0_12px_28px_-6px_rgba(37,99,235,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] border border-white/25 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-              
+
               {/* Metallic Light Shimmer Overlay */}
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none" />
 
               {/* Geometric Vector Mark: Odia temple-arch, hardhat keystone, bridge span */}
-              <svg 
-                viewBox="0 0 40 40" 
-                className="w-8 h-8 fill-none stroke-white drop-shadow-sm" 
-                strokeWidth="2.2" 
-                strokeLinecap="round" 
+              <svg
+                viewBox="0 0 40 40"
+                className="w-8 h-8 fill-none stroke-white drop-shadow-sm"
+                strokeWidth="2.2"
+                strokeLinecap="round"
                 strokeLinejoin="round"
               >
                 {/* Temple Arch Silhouette Peak */}
                 <path d="M 20 6 L 26 14 L 14 14 Z" fill="white" />
                 <path d="M 14 14 L 14 22 L 26 22 L 26 14" strokeWidth="2" />
-                
+
                 {/* Nirman Hardhat / Keystone Crest */}
                 <path d="M 16 20 C 16 16.5 24 16.5 24 20" strokeWidth="2.4" />
 
                 {/* Suspension Bridge Parabolic Arch ("Setu") */}
                 <path d="M 7 32 Q 20 22 33 32" strokeWidth="2.4" />
                 <line x1="7" y1="32" x2="33" y2="32" strokeWidth="1.8" />
-                
+
                 {/* Bridge Vertical Hangers */}
                 <line x1="14" y1="26.5" x2="14" y2="32" strokeWidth="1.5" />
                 <line x1="20" y1="24.5" x2="20" y2="32" strokeWidth="1.5" />
@@ -294,7 +297,7 @@ export default function LoginPage() {
         {/* MINIMALIST CARD SURFACE (Pure White, max-w: 420px)       */}
         {/* ======================================================== */}
         <div className="bg-white rounded-[20px] p-8 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.65),0_0_1px_1px_rgba(255,255,255,0.06)] border border-slate-100 text-slate-800">
-          
+
           {/* Card Header */}
           <div className="mb-6">
             <h2 className="text-xl font-bold text-slate-900 tracking-tight">
@@ -317,7 +320,7 @@ export default function LoginPage() {
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
-            
+
             {/* Username Input */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1.5">

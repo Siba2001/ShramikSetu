@@ -17,10 +17,11 @@ import {
   User, 
   FileSpreadsheet,
   Phone,
-  AlertCircle
+  AlertCircle,
+  Printer
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { exportApplications } from '../utils/exportUtils';
+import { exportApplications, exportBlockWisePDF, exportBlockWiseExcel } from '../utils/exportUtils';
 
 export default function ApplicationModulePage({ 
   serviceKey, 
@@ -173,6 +174,24 @@ export default function ApplicationModulePage({
     setTimeout(() => setCopiedTrack(null), 2000);
   };
 
+  const handleDownloadBlockPDF = () => {
+    const res = exportBlockWisePDF(filteredList, {
+      service: serviceKey,
+      block: selectedBlock,
+      status: selectedStatus
+    });
+    showToast('success', `Generated ${res.count} records in Official PDF: ${res.filename}`);
+  };
+
+  const handleDownloadBlockExcel = () => {
+    const res = exportBlockWiseExcel(filteredList, {
+      service: serviceKey,
+      block: selectedBlock,
+      status: selectedStatus
+    });
+    showToast('success', `Exported ${res.count} records in Official Excel: ${res.filename}`);
+  };
+
   const handleExportThisModule = () => {
     exportApplications(filteredList, {
       service: serviceKey,
@@ -223,16 +242,30 @@ export default function ApplicationModulePage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {/* Download Official Block PDF */}
           <button
-            onClick={handleExportThisModule}
+            onClick={handleDownloadBlockPDF}
             disabled={filteredList.length === 0}
-            className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-40"
+            className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-2xs"
+            title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} PDF Report`}
           >
-            <FileDown className="w-4 h-4 text-slate-500" />
-            <span>Export Module</span>
+            <Printer className="w-4 h-4 text-rose-600" />
+            <span>Download PDF</span>
           </button>
 
+          {/* Download Official Block Excel */}
+          <button
+            onClick={handleDownloadBlockExcel}
+            disabled={filteredList.length === 0}
+            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-2xs"
+            title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} Excel Report`}
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Download Excel</span>
+          </button>
+
+          {/* Add Application Button */}
           <button
             onClick={() => handleOpenAddModal(serviceKey)}
             className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold transition-all shadow-sm shadow-blue-500/20 flex items-center gap-1.5"

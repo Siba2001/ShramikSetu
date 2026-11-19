@@ -3,20 +3,20 @@ import { LogOut, X, ShieldCheck } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
 export default function LogoutConfirmModal() {
-  const { 
-    isLogoutConfirmOpen, 
-    cancelLogout, 
-    handleLogout 
+  const {
+    isLogoutConfirmOpen,
+    cancelLogout,
+    handleLogout
   } = useApp();
 
   if (!isLogoutConfirmOpen) return null;
 
   return (
-    <div 
+    <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn"
       onClick={cancelLogout}
     >
-      <div 
+      <div
         className="bg-white rounded-2xl max-w-sm w-full border border-slate-200 shadow-2xl overflow-hidden relative animate-scale-in"
         onClick={(e) => e.stopPropagation()}
       >
@@ -31,7 +31,7 @@ export default function LogoutConfirmModal() {
 
         {/* Modal Body */}
         <div className="p-6 text-center">
-          
+
           {/* Warning Icon Badge */}
           <div className="w-14 h-14 rounded-2xl bg-rose-50 border border-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-4 shadow-sm">
             <LogOut className="w-6 h-6 text-rose-600 translate-x-0.5" />
