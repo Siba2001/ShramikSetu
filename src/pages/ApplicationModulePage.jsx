@@ -578,7 +578,7 @@ export default function ApplicationModulePage({
                           <option value="Query Raised">Query Raised (Q)</option>
                           <option value="Query Replied">Query Replied</option>
                           <option value="Approved">Approved</option>
-                          <option value="Completed">Completed (Delete & Archive)</option>
+                          <option value="Completed">Completed</option>
                           <option value="Bank Reject">Bank Reject</option>
                         </select>
                       </td>

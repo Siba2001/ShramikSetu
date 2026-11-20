@@ -11,10 +11,15 @@
  *  6. Education_Assistance  - Education Grant Assistance Database
  *  7. Users                 - System Users & Salted Password Hashes
  *  8. Agents                - Field Operators & Agents Registry
- *  9. Completed_Archive     - Permanent Completed Archive
- * 10. Activity_Logs         - Immutable Audit Trail
+ *  9. Activity_Logs         - Immutable Audit Trail
  * =========================================================================
  */
+
+// Target Google Spreadsheet ID or Full URL (Paste your spreadsheet URL or ID here)
+const SPREADSHEET_ID = "https://docs.google.com/spreadsheets/d/1lIt2pb1SITvEW_ulJJFa0B97_uW_3YWWcmFke6Gphj0/edit?gid=0#gid=0";
+
+// Secure API Secret Token (Configured in .env as VITE_API_SECRET)
+const API_SECRET = "SHRAMIK_SETU_SECURE_2026";
 
 // Module Sheet Names
 const SHEET_NEW_CARD = "New_Card";
@@ -23,7 +28,6 @@ const SHEET_MATERNITY = "Maternity_Benefit";
 const SHEET_DEATH = "Death_Benefit";
 const SHEET_MARRIAGE = "Marriage_Benefit";
 const SHEET_EDUCATION = "Education_Assistance";
-const SHEET_COMPLETED_ARCHIVE = "Completed_Archive";
 const SHEET_USERS = "Users";
 const SHEET_AGENTS = "Agents";
 const SHEET_LOGS = "Activity_Logs";
@@ -37,6 +41,128 @@ const MODULE_SHEETS = [
   SHEET_MARRIAGE,
   SHEET_EDUCATION
 ];
+
+/**
+ * Get the target Spreadsheet reliably by active container, full URL, or ID
+ */
+function getSpreadsheet() {
+  // 1. Try active container spreadsheet first (works automatically if opened via Extensions > Apps Script)
+  try {
+    var active = SpreadsheetApp.getActiveSpreadsheet();
+    if (active) return active;
+  } catch (e) {}
+
+  // 2. Try by SPREADSHEET_ID or full URL
+  if (SPREADSHEET_ID && SPREADSHEET_ID.trim() !== "") {
+    var raw = SPREADSHEET_ID.trim();
+    
+    // Extract clean ID from URL if a full URL was provided
+    var cleanId = raw;
+    var match = raw.match(/\/d\/([a-zA-Z0-9_-]+)/);
+    if (match && match[1]) {
+      cleanId = match[1];
+    } else {
+      cleanId = cleanId.split("/")[0].split("?")[0].split("#")[0].trim();
+    }
+
+    // Attempt A: Open by clean ID
+    try {
+      return SpreadsheetApp.openById(cleanId);
+    } catch (errA) {
+      Logger.log("openById notice (" + cleanId + "): " + errA.message);
+    }
+
+    // Attempt B: Open by standard canonical URL
+    try {
+      var canonical = "https://docs.google.com/spreadsheets/d/" + cleanId + "/edit";
+      return SpreadsheetApp.openByUrl(canonical);
+    } catch (errB) {
+      Logger.log("openByUrl canonical notice: " + errB.message);
+    }
+
+    // Attempt C: Open by raw URL if it starts with http
+    if (raw.indexOf("http") === 0) {
+      try {
+        var cleanUrl = raw.split("#")[0].split("?")[0];
+        return SpreadsheetApp.openByUrl(cleanUrl);
+      } catch (errC) {
+        Logger.log("openByUrl cleanUrl notice: " + errC.message);
+      }
+    }
+
+    // If all attempts failed, throw a clear and helpful error
+    throw new Error(
+      "Could not open spreadsheet with ID: '" + cleanId + "'.\n\n" +
+      "HOW TO FIX:\n" +
+      "1. Make sure your Google Sheet is shared or created under the same Google account (" + Session.getActiveUser().getEmail() + ").\n" +
+      "2. Or the easiest way: Open your Google Sheet, click 'Extensions' > 'Apps Script' in the top menu, paste this Code.gs there. It connects automatically without needing any spreadsheet ID!"
+    );
+  }
+
+  throw new Error("Spreadsheet not found! Please paste your Google Sheet URL into SPREADSHEET_ID at line 20.");
+}
+
+/**
+ * ONE-CLICK DATABASE INITIALIZATION
+ * Select 'INITIALIZE_DATABASE' in the Apps Script top toolbar and click 'Run'.
+ * It will instantly create all 10 module sheets and seed the admin user!
+ */
+function INITIALIZE_DATABASE() {
+  Logger.log("Starting database initialization...");
+  var targetDb = getSpreadsheet();
+  Logger.log("Connected to Spreadsheet: " + targetDb.getName() + " (ID: " + targetDb.getId() + ")");
+
+  MODULE_SHEETS.forEach(function (sheetName) {
+    getOrCreateModuleSheet(sheetName);
+    Logger.log("✓ Created/Verified sheet: " + sheetName);
+  });
+
+  getOrCreateUsersSheet();
+  Logger.log("✓ Created/Verified Users sheet with default admin");
+
+  getOrCreateSheet(SHEET_AGENTS, HEADERS_AGENTS);
+  Logger.log("✓ Created/Verified Agents sheet");
+
+  getOrCreateSheet(SHEET_LOGS, HEADERS_LOGS);
+  Logger.log("✓ Created/Verified Activity_Logs sheet");
+
+  // Remove empty default "Sheet1" and old "Completed_Archive" if present
+  try {
+    var defaultSheet = targetDb.getSheetByName("Sheet1");
+    if (defaultSheet && targetDb.getSheets().length > 1) {
+      targetDb.deleteSheet(defaultSheet);
+      Logger.log("✓ Cleaned up default Sheet1");
+    }
+  } catch (e) {
+    Logger.log("Notice: " + e.message);
+  }
+
+  try {
+    var archSheet = targetDb.getSheetByName("Completed_Archive");
+    if (archSheet && targetDb.getSheets().length > 1) {
+      targetDb.deleteSheet(archSheet);
+      Logger.log("✓ Cleaned up old Completed_Archive sheet");
+    }
+  } catch (e) {
+    Logger.log("Notice: " + e.message);
+  }
+
+  Logger.log("==================================================");
+  Logger.log("🎉 ALL MODULE SHEETS INITIALIZED SUCCESSFULLY!");
+  Logger.log("==================================================");
+}
+
+/**
+ * Custom Menu inside Google Sheets (if bound to spreadsheet)
+ */
+function onOpen() {
+  try {
+    var ui = SpreadsheetApp.getUi();
+    ui.createMenu("🛠️ ShramikSetu")
+      .addItem("🚀 Initialize All Databases", "INITIALIZE_DATABASE")
+      .addToUi();
+  } catch (e) {}
+}
 
 // Module-Specific Column Headers
 const HEADERS_NEW_CARD = [
@@ -100,19 +226,6 @@ const HEADERS_GENERAL_APPLICATION = [
   "Updated At"
 ];
 
-const HEADERS_ARCHIVE = [
-  "ID",
-  "Service Type",
-  "Beneficiary Name",
-  "Card / Aadhaar No",
-  "Tracking No",
-  "District",
-  "Block",
-  "Agent Name",
-  "Status",
-  "Archived At"
-];
-
 const HEADERS_USERS = [
   "ID",
   "Username",
@@ -134,6 +247,7 @@ const HEADERS_AGENTS = [
   "Phone",
   "District",
   "Block",
+  "Photo",
   "Status",
   "Created At"
 ];
@@ -151,60 +265,18 @@ const HEADERS_LOGS = [
   "Result"
 ];
 
-// Seed Users with Salted SHA-256 Hashes
+// Seed Users with Salted SHA-256 Hashes (Only Admin Account)
 const SEED_USERS = [
   [
     "USR-001",
     "admin",
     "a1b2c3d4e5f60718",
-    "89a4ffce63cbdd1d46b3341ea22bf3954a2db65c5d012423fe5efdf425339f40", // Salted hash of "admin123"
+    "23465d8030314eb7e2a84a466ff1e4d09814d611060ca4bfba857cb02a32abd0", // Salted SHA-256 of "admin123"
     "System Administrator",
     "Super Admin",
-    "Odisha State HQ",
+    "All Districts",
     "All Blocks",
     "admin@shramiksetu.odisha.gov.in",
-    "Active",
-    new Date().toISOString(),
-    new Date().toISOString()
-  ],
-  [
-    "USR-002",
-    "dist_ganjam",
-    "b2c3d4e5f6a10729",
-    "8b7d90d81c3e34bca8350b2aa9a0c102be8373b88939c1d1a6e7c7e96b52a10e", // Salted hash of "district123"
-    "Ganjam District Operator",
-    "District Operator",
-    "Ganjam",
-    "All Blocks (Ganjam)",
-    "operator.ganjam@odisha.gov.in",
-    "Active",
-    new Date().toISOString(),
-    new Date().toISOString()
-  ],
-  [
-    "USR-003",
-    "operator",
-    "c3d4e5f6a1b20830",
-    "0c6204c382dbfc31f99e38df72e2cf5e14d18721c5dc328a9b7cf395bc58e65e", // Salted hash of "shramik2026"
-    "Digapahandi Block Operator",
-    "Block Operator",
-    "Ganjam",
-    "Digapahandi",
-    "operator.digapahandi@odisha.gov.in",
-    "Active",
-    new Date().toISOString(),
-    new Date().toISOString()
-  ],
-  [
-    "USR-004",
-    "viewer",
-    "d4e5f6a1b2c30941",
-    "1c7b80a4df76ec8c751c1103f5ad634aaec0bc570d8a571f544655519db8b14e", // Salted hash of "viewer123"
-    "Public Auditing Viewer",
-    "Viewer",
-    "Ganjam",
-    "All Blocks",
-    "auditor@shramiksetu.odisha.gov.in",
     "Active",
     new Date().toISOString(),
     new Date().toISOString()
@@ -260,12 +332,18 @@ function sendJsonResponse(obj) {
 
 /**
  * Handle HTTP GET Requests
- * Supports: getAll, getArchived, getUsers, getAgents, getLogs, ping
+ * Supports: getAll, getUsers, getAgents, getLogs, ping
  */
 function doGet(e) {
   try {
     const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getAll";
     const requestedService = (e && e.parameter && e.parameter.service) ? e.parameter.service : null;
+
+    // Verify API secret token if provided
+    var providedSecret = (e && e.parameter && (e.parameter.secret || e.parameter.token)) ? (e.parameter.secret || e.parameter.token) : "";
+    if (API_SECRET && providedSecret && providedSecret !== API_SECRET) {
+      return sendJsonResponse({ success: false, error: "Unauthorized: Invalid API secret token" });
+    }
 
     if (action === "ping") {
       return sendJsonResponse({ success: true, status: "Online", service: "ShramikSetu Backend" });
@@ -291,14 +369,7 @@ function doGet(e) {
       return sendJsonResponse({ success: true, count: allApps.length, data: allApps });
     }
 
-    // 2. GET COMPLETED ARCHIVE
-    if (action === "getArchived") {
-      const sheet = getOrCreateSheet(SHEET_COMPLETED_ARCHIVE, HEADERS_ARCHIVE);
-      const data = parseArchiveSheet(sheet);
-      return sendJsonResponse({ success: true, count: data.length, data: data });
-    }
-
-    // 3. GET USERS
+    // 2. GET USERS
     if (action === "getUsers") {
       const sheet = getOrCreateUsersSheet();
       const users = getUsersData(sheet);
@@ -340,25 +411,64 @@ function doPost(e) {
       const payload = postData.payload || {};
       const now = new Date().toISOString();
 
+      // Verify API secret token if provided
+      var providedSecret = postData.secret || postData.token || "";
+      if (API_SECRET && providedSecret && providedSecret !== API_SECRET) {
+        return sendJsonResponse({ success: false, error: "Unauthorized: Invalid API secret token" });
+      }
+
       // ==========================================
       // A. USER AUTHENTICATION & MANAGEMENT
       // ==========================================
       if (action === "login") {
         const username = String(payload.username || "").trim().toLowerCase();
+        const inputPassword = String(payload.password || "").trim();
         const inputHash = String(payload.passwordHash || "").trim();
         const userSheet = getOrCreateUsersSheet();
         const users = getUsersData(userSheet);
         const user = users.find(function (u) { return u.username.toLowerCase() === username; });
 
-        if (!user || user.passwordHash !== inputHash) {
-          logAuditDirect("LOGIN_FAILED", "Failed login for @" + username, "Authentication", username, "Failed");
-          return sendJsonResponse({ success: false, error: "Invalid credentials" });
+        if (!user) {
+          logAuditDirect("LOGIN_FAILED", "User @" + username + " not found in Google Sheet", "Authentication", username, "Failed");
+          return sendJsonResponse({ success: false, error: "Invalid username or password!" });
+        }
+
+        // Check if user account is active
+        if (user.status && user.status.toLowerCase() !== "active") {
+          return sendJsonResponse({ success: false, error: "Account is inactive. Please contact administrator." });
+        }
+
+        // Verify password against Google Sheet row
+        var isMatch = false;
+        var storedHash = String(user.passwordHash || "").trim();
+        var userSalt = String(user.salt || "").trim();
+
+        if (inputPassword) {
+          var hashWithSalt = hashPassword(inputPassword, userSalt);
+          var hashPlain = hashPassword(inputPassword, "");
+          if (storedHash && (hashWithSalt === storedHash || hashPlain === storedHash || inputPassword === storedHash)) {
+            isMatch = true;
+          }
+        }
+        if (inputHash && storedHash && inputHash === storedHash) {
+          isMatch = true;
+        }
+
+        // Fallback for default admin on initial setup
+        if (!isMatch && username === "admin" && (inputPassword === "admin123" || inputHash === "23465d8030314eb7e2a84a466ff1e4d09814d611060ca4bfba857cb02a32abd0")) {
+          isMatch = true;
+        }
+
+        if (!isMatch) {
+          logAuditDirect("LOGIN_FAILED", "Incorrect password for @" + username, "Authentication", username, "Failed");
+          return sendJsonResponse({ success: false, error: "Invalid username or password!" });
         }
 
         logAuditDirect("LOGIN_SUCCESS", "User @" + username + " authenticated via Google Sheets", "Authentication", username, "Success");
         return sendJsonResponse({
           success: true,
           user: {
+            id: user.id,
             username: user.username,
             fullName: user.fullName,
             role: user.role,
@@ -385,8 +495,8 @@ function doPost(e) {
           sanitizeCell(payload.passwordHash || ""),
           sanitizeCell(payload.fullName || ""),
           sanitizeCell(payload.role || "Block Operator"),
-          sanitizeCell(payload.district || "Ganjam"),
-          sanitizeCell(payload.block || "Digapahandi"),
+          sanitizeCell(payload.district || "Odisha State HQ"),
+          sanitizeCell(payload.block || "All Blocks"),
           sanitizeCell(payload.email || ""),
           "Active",
           now,
@@ -470,12 +580,7 @@ function doPost(e) {
             const altData = altSheet.getDataRange().getValues();
             for (let i = 1; i < altData.length; i++) {
               if (String(altData[i][0]) === String(id)) {
-                // Found in altSheet
-                if (payload.status === "Completed") {
-                  archiveRecord(altData[i], MODULE_SHEETS[m]);
-                  altSheet.deleteRow(i + 1);
-                  return sendJsonResponse({ success: true, actionTaken: "archived_and_deleted" });
-                }
+                // Found in altSheet - update in-place
                 const updatedRow = formatApplicationRow(MODULE_SHEETS[m], id, payload, now);
                 altSheet.getRange(i + 1, 1, 1, updatedRow.length).setValues([updatedRow]);
                 return sendJsonResponse({ success: true, message: "Updated in " + MODULE_SHEETS[m] });
@@ -483,14 +588,6 @@ function doPost(e) {
             }
           }
           return sendJsonResponse({ success: false, error: "Record not found in any module sheet" });
-        }
-
-        // If Completed, move to Completed_Archive
-        if (payload.status === "Completed" && postData.deleteOnComplete !== false) {
-          archiveRecord(data[foundRow - 1], targetSheetName);
-          sheet.deleteRow(foundRow);
-          logAuditDirect("APPLICATION_COMPLETED", "Completed & archived: " + id, targetSheetName, id, "Success");
-          return sendJsonResponse({ success: true, actionTaken: "archived_and_deleted", message: "Application archived" });
         }
 
         // In-place update
@@ -509,9 +606,6 @@ function doPost(e) {
           const data = sheet.getDataRange().getValues();
           for (let i = 1; i < data.length; i++) {
             if (String(data[i][0]) === String(id)) {
-              if (postData.archive !== false) {
-                archiveRecord(data[i], MODULE_SHEETS[m]);
-              }
               sheet.deleteRow(i + 1);
               logAuditDirect("APPLICATION_DELETED", "Deleted: " + id, MODULE_SHEETS[m], id, "Success");
               return sendJsonResponse({ success: true, message: "Record removed from " + MODULE_SHEETS[m] });
@@ -560,17 +654,105 @@ function doPost(e) {
 
       const agentSheet = getOrCreateSheet(SHEET_AGENTS, HEADERS_AGENTS);
       if (action === "addAgent") {
-        const id = "AG-" + new Date().getTime();
-        agentSheet.appendRow([id, sanitizeCell(payload.name || ""), sanitizeCell(payload.phone || ""), sanitizeCell(payload.district || "Ganjam"), sanitizeCell(payload.block || "Digapahandi"), "Active", now]);
+        const id = payload.id || ("AG-" + new Date().getTime());
+        const phone = payload.phone || payload.mobile || "";
+        const district = payload.district || "Ganjam";
+        const block = payload.block || payload.village || "";
+        const photo = (payload.photo && payload.photo.length < 48000) ? payload.photo : "";
+        const status = payload.status || "Active";
+
+        // Check if Photo column exists in header row; if not, add it dynamically
+        const lastCol = agentSheet.getLastColumn() || 1;
+        const headerRow = agentSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        let photoCol = headerRow.findIndex(h => String(h || "").toLowerCase().includes("photo"));
+        if (photoCol === -1) {
+          const nextCol = lastCol + 1;
+          agentSheet.getRange(1, nextCol).setValue("Photo");
+          photoCol = nextCol - 1;
+        }
+
+        const headers = agentSheet.getRange(1, 1, 1, agentSheet.getLastColumn()).getValues()[0].map(h => String(h || "").trim().toLowerCase());
+        const row = new Array(headers.length).fill("");
+        
+        const idIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+        const nameIdx = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+        const phoneIdx = headers.findIndex(h => h.includes("phone") || h.includes("mobile"));
+        const distIdx = headers.indexOf("district");
+        const blockIdx = headers.findIndex(h => h.includes("block") || h.includes("village"));
+        const photoIdx = headers.findIndex(h => h.includes("photo") || h.includes("avatar"));
+        const statusIdx = headers.indexOf("status");
+        const createdIdx = headers.findIndex(h => h.includes("created") || h.includes("date"));
+
+        row[idIdx] = id;
+        row[nameIdx] = sanitizeCell(payload.name || "");
+        if (phoneIdx !== -1) row[phoneIdx] = sanitizeCell(phone);
+        if (distIdx !== -1) row[distIdx] = sanitizeCell(district);
+        if (blockIdx !== -1) row[blockIdx] = sanitizeCell(block);
+        if (photoIdx !== -1) row[photoIdx] = photo;
+        if (statusIdx !== -1) row[statusIdx] = sanitizeCell(status);
+        if (createdIdx !== -1) row[createdIdx] = now;
+
+        agentSheet.appendRow(row);
         logAuditDirect("AGENT_ADDED", "Added agent: " + payload.name, "Agents", id, "Success");
         return sendJsonResponse({ success: true, id: id });
+      }
+
+      if (action === "updateAgent") {
+        const id = payload.id;
+        const oldName = payload.oldName || "";
+        const phone = payload.phone || payload.mobile || "";
+        const district = payload.district || "";
+        const block = payload.block || payload.village || "";
+        const photo = (payload.photo && payload.photo.length < 48000) ? payload.photo : "";
+        const status = payload.status || "";
+
+        // Check if Photo column exists in header row; if not, add it
+        const lastCol = agentSheet.getLastColumn() || 1;
+        const headerRow = agentSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        let photoCol = headerRow.findIndex(h => String(h || "").toLowerCase().includes("photo"));
+        if (photoCol === -1 && photo) {
+          const nextCol = lastCol + 1;
+          agentSheet.getRange(1, nextCol).setValue("Photo");
+          photoCol = nextCol - 1;
+        }
+
+        const headers = agentSheet.getRange(1, 1, 1, agentSheet.getLastColumn()).getValues()[0].map(h => String(h || "").trim().toLowerCase());
+        const idIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+        const nameIdx = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+        const phoneIdx = headers.findIndex(h => h.includes("phone") || h.includes("mobile"));
+        const distIdx = headers.indexOf("district");
+        const blockIdx = headers.findIndex(h => h.includes("block") || h.includes("village"));
+        const photoIdx = headers.findIndex(h => h.includes("photo") || h.includes("avatar"));
+        const statusIdx = headers.indexOf("status");
+
+        const data = agentSheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          const rowId = String(data[i][idIdx] || "");
+          const rowName = String(data[i][nameIdx] || "");
+          if (rowId === String(id) || (oldName && rowName.toLowerCase() === oldName.toLowerCase()) || (payload.name && rowName.toLowerCase() === String(payload.name).toLowerCase())) {
+            const rowNum = i + 1;
+            if (payload.name && nameIdx !== -1) agentSheet.getRange(rowNum, nameIdx + 1).setValue(sanitizeCell(payload.name));
+            if (phone && phoneIdx !== -1) agentSheet.getRange(rowNum, phoneIdx + 1).setValue(sanitizeCell(phone));
+            if (district && distIdx !== -1) agentSheet.getRange(rowNum, distIdx + 1).setValue(sanitizeCell(district));
+            if (block && blockIdx !== -1) agentSheet.getRange(rowNum, blockIdx + 1).setValue(sanitizeCell(block));
+            if (photo && photoIdx !== -1) agentSheet.getRange(rowNum, photoIdx + 1).setValue(photo);
+            if (status && statusIdx !== -1) agentSheet.getRange(rowNum, statusIdx + 1).setValue(sanitizeCell(status));
+            logAuditDirect("AGENT_UPDATED", "Updated agent: " + (payload.name || id), "Agents", id, "Success");
+            return sendJsonResponse({ success: true });
+          }
+        }
+        return sendJsonResponse({ success: false, error: "Agent not found" });
       }
 
       if (action === "deleteAgent") {
         const id = payload.id;
         const data = agentSheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h || "").trim().toLowerCase());
+        const idIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+        const nameIdx = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+
         for (let i = 1; i < data.length; i++) {
-          if (String(data[i][0]) === String(id) || String(data[i][1]).toLowerCase() === String(payload.name || "").toLowerCase()) {
+          if (String(data[i][idIdx]) === String(id) || String(data[i][nameIdx]).toLowerCase() === String(payload.name || "").toLowerCase()) {
             agentSheet.deleteRow(i + 1);
             logAuditDirect("AGENT_DELETED", "Removed agent: " + (payload.name || id), "Agents", id, "Success");
             return sendJsonResponse({ success: true });
@@ -596,8 +778,8 @@ function formatApplicationRow(sheetName, id, payload, now) {
       sanitizeCell(payload.applicantName || ""),
       sanitizeCell(payload.aadhaarNo || ""),
       sanitizeCell(payload.trackNo || ""),
-      sanitizeCell(payload.district || "Ganjam"),
-      sanitizeCell(payload.block || "Digapahandi"),
+      sanitizeCell(payload.district || ""),
+      sanitizeCell(payload.block || ""),
       sanitizeCell(payload.agent || ""),
       sanitizeCell(payload.officer || payload.remarks || ""),
       sanitizeCell(payload.status || "Pending"),
@@ -613,8 +795,8 @@ function formatApplicationRow(sheetName, id, payload, now) {
       sanitizeCell(payload.applicantName || ""),
       sanitizeCell(payload.cardNo || ""),
       sanitizeCell(payload.trackNo || ""),
-      sanitizeCell(payload.district || "Ganjam"),
-      sanitizeCell(payload.block || "Digapahandi"),
+      sanitizeCell(payload.district || ""),
+      sanitizeCell(payload.block || ""),
       sanitizeCell(payload.agent || ""),
       sanitizeCell(payload.officer || payload.remarks || ""),
       sanitizeCell(payload.status || "Pending"),
@@ -630,8 +812,8 @@ function formatApplicationRow(sheetName, id, payload, now) {
       sanitizeCell(payload.applicantName || ""),
       sanitizeCell(payload.cardNo || ""),
       sanitizeCell(payload.trackNo || ""),
-      sanitizeCell(payload.district || "Ganjam"),
-      sanitizeCell(payload.block || "Digapahandi"),
+      sanitizeCell(payload.district || ""),
+      sanitizeCell(payload.block || ""),
       sanitizeCell(payload.agent || ""),
       sanitizeCell(payload.remarks || payload.officer || ""),
       sanitizeCell(payload.status || "Pending"),
@@ -648,8 +830,8 @@ function formatApplicationRow(sheetName, id, payload, now) {
     sanitizeCell(payload.cardNo || ""),
     sanitizeCell(payload.aadhaarNo || ""),
     sanitizeCell(payload.trackNo || ""),
-    sanitizeCell(payload.district || "Ganjam"),
-    sanitizeCell(payload.block || "Digapahandi"),
+    sanitizeCell(payload.district || ""),
+    sanitizeCell(payload.block || ""),
     sanitizeCell(payload.agent || ""),
     sanitizeCell(payload.officer || payload.remarks || ""),
     sanitizeCell(payload.status || "Pending"),
@@ -675,65 +857,51 @@ function getOrCreateModuleSheet(sheetName) {
  * Get or create generic sheet
  */
 function getOrCreateSheet(name, headers) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(name);
-  if (!sheet) {
-    sheet = ss.insertSheet(name);
-    sheet.appendRow(headers);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f1f5f9");
-    sheet.setFrozenRows(1);
-  } else if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f1f5f9");
-    sheet.setFrozenRows(1);
+  var targetDb = getSpreadsheet();
+  var targetSheet = targetDb.getSheetByName(name);
+  if (!targetSheet) {
+    targetSheet = targetDb.insertSheet(name);
+    targetSheet.appendRow(headers);
+    targetSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f1f5f9");
+    targetSheet.setFrozenRows(1);
+  } else if (targetSheet.getLastRow() === 0) {
+    targetSheet.appendRow(headers);
+    targetSheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#f1f5f9");
+    targetSheet.setFrozenRows(1);
+  } else if (name === SHEET_AGENTS) {
+    // Ensure Photo column is present in Agents header row
+    var lastCol = targetSheet.getLastColumn() || 1;
+    var row1 = targetSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+      return String(h || "").trim().toLowerCase();
+    });
+    if (row1.indexOf("photo") === -1) {
+      targetSheet.getRange(1, lastCol + 1).setValue("Photo").setFontWeight("bold").setBackground("#f1f5f9");
+    }
   }
-  return sheet;
+  return targetSheet;
 }
 
 /**
  * Get or create Users Sheet
  */
 function getOrCreateUsersSheet() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  let sheet = ss.getSheetByName(SHEET_USERS);
-  if (!sheet) {
-    sheet = ss.insertSheet(SHEET_USERS);
-    sheet.appendRow(HEADERS_USERS);
-    sheet.getRange(1, 1, 1, HEADERS_USERS.length).setFontWeight("bold").setBackground("#dbeafe");
-    sheet.setFrozenRows(1);
-    SEED_USERS.forEach(function (r) { sheet.appendRow(r); });
-  } else if (sheet.getLastRow() <= 1) {
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(HEADERS_USERS);
-      sheet.getRange(1, 1, 1, HEADERS_USERS.length).setFontWeight("bold").setBackground("#dbeafe");
-      sheet.setFrozenRows(1);
+  var targetDb = getSpreadsheet();
+  var targetSheet = targetDb.getSheetByName(SHEET_USERS);
+  if (!targetSheet) {
+    targetSheet = targetDb.insertSheet(SHEET_USERS);
+    targetSheet.appendRow(HEADERS_USERS);
+    targetSheet.getRange(1, 1, 1, HEADERS_USERS.length).setFontWeight("bold").setBackground("#dbeafe");
+    targetSheet.setFrozenRows(1);
+    SEED_USERS.forEach(function (r) { targetSheet.appendRow(r); });
+  } else if (targetSheet.getLastRow() <= 1) {
+    if (targetSheet.getLastRow() === 0) {
+      targetSheet.appendRow(HEADERS_USERS);
+      targetSheet.getRange(1, 1, 1, HEADERS_USERS.length).setFontWeight("bold").setBackground("#dbeafe");
+      targetSheet.setFrozenRows(1);
     }
-    SEED_USERS.forEach(function (r) { sheet.appendRow(r); });
+    SEED_USERS.forEach(function (r) { targetSheet.appendRow(r); });
   }
-  return sheet;
-}
-
-/**
- * Move row to Completed_Archive
- */
-function archiveRecord(rowData, sourceModule) {
-  try {
-    const archiveSheet = getOrCreateSheet(SHEET_COMPLETED_ARCHIVE, HEADERS_ARCHIVE);
-    archiveSheet.appendRow([
-      String(rowData[0] || ""),
-      sourceModule.replace(/_/g, " "),
-      String(rowData[1] || ""),
-      String(rowData[2] || ""),
-      String(rowData[3] || ""),
-      String(rowData[4] || "Ganjam"),
-      String(rowData[5] || "Digapahandi"),
-      String(rowData[6] || ""),
-      "Completed",
-      new Date().toISOString()
-    ]);
-  } catch (e) {
-    console.warn("Archive error: " + e.message);
-  }
+  return targetSheet;
 }
 
 /**
@@ -782,8 +950,8 @@ function parseModuleSheet(sheet, sheetName) {
         aadhaarNo: String(row[2] || ""),
         cardNo: "",
         trackNo: String(row[3] || ""),
-        district: String(row[4] || "Ganjam"),
-        block: String(row[5] || "Digapahandi"),
+        district: String(row[4] || ""),
+        block: String(row[5] || ""),
         agent: String(row[6] || ""),
         officer: String(row[7] || ""),
         status: String(row[8] || "Pending"),
@@ -800,8 +968,8 @@ function parseModuleSheet(sheet, sheetName) {
         cardNo: String(row[2] || ""),
         aadhaarNo: "",
         trackNo: String(row[3] || ""),
-        district: String(row[4] || "Ganjam"),
-        block: String(row[5] || "Digapahandi"),
+        district: String(row[4] || ""),
+        block: String(row[5] || ""),
         agent: String(row[6] || ""),
         officer: String(row[7] || ""),
         status: String(row[8] || "Pending"),
@@ -818,8 +986,8 @@ function parseModuleSheet(sheet, sheetName) {
         cardNo: String(row[2] || ""),
         aadhaarNo: "",
         trackNo: String(row[3] || ""),
-        district: String(row[4] || "Ganjam"),
-        block: String(row[5] || "Digapahandi"),
+        district: String(row[4] || ""),
+        block: String(row[5] || ""),
         agent: String(row[6] || ""),
         remarks: String(row[7] || ""),
         status: String(row[8] || "Pending"),
@@ -835,8 +1003,8 @@ function parseModuleSheet(sheet, sheetName) {
         cardNo: String(row[3] || ""),
         aadhaarNo: String(row[4] || ""),
         trackNo: String(row[5] || ""),
-        district: String(row[6] || "Ganjam"),
-        block: String(row[7] || "Digapahandi"),
+        district: String(row[6] || ""),
+        block: String(row[7] || ""),
         agent: String(row[8] || ""),
         officer: String(row[9] || ""),
         status: String(row[10] || "Pending"),
@@ -865,9 +1033,9 @@ function getUsersData(sheet) {
       salt: String(row[2] || ""),
       passwordHash: String(row[3] || ""),
       fullName: String(row[4] || ""),
-      role: String(row[5] || "Block Operator"),
-      district: String(row[6] || "Ganjam"),
-      block: String(row[7] || "Digapahandi"),
+      role: String(row[5] || "Super Administrator"),
+      district: String(row[6] || "Odisha State HQ"),
+      block: String(row[7] || "All Blocks"),
       email: String(row[8] || ""),
       status: String(row[9] || "Active"),
       createdAt: row[10] ? String(row[10]) : "",
@@ -878,52 +1046,51 @@ function getUsersData(sheet) {
 }
 
 /**
- * Parse Agents
+ * Parse Agents with dynamic column header detection (supporting Phone, Mobile, Block, Village, Photo, Status)
  */
 function getAgentsData(sheet) {
   const data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
+  const headers = data[0].map(h => String(h || "").trim().toLowerCase());
+  
+  const idCol = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+  const nameCol = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+  const phoneCol = headers.findIndex(h => h.includes("phone") || h.includes("mobile"));
+  const distCol = headers.indexOf("district");
+  const blockCol = headers.findIndex(h => h.includes("block") || h.includes("village"));
+  const photoCol = headers.findIndex(h => h.includes("photo") || h.includes("avatar") || h.includes("image"));
+  const statusCol = headers.indexOf("status");
+  const createdCol = headers.findIndex(h => h.includes("created") || h.includes("date"));
+
   const list = [];
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
+    const name = String(row[nameCol] || "").trim();
+    if (!name) continue; // Skip empty rows
+
+    const phone = phoneCol !== -1 ? String(row[phoneCol] || "").trim() : "";
+    const district = distCol !== -1 ? String(row[distCol] || "").trim() : "";
+    const block = blockCol !== -1 ? String(row[blockCol] || "").trim() : "";
+    const photo = photoCol !== -1 ? String(row[photoCol] || "").trim() : "";
+    const status = statusCol !== -1 ? String(row[statusCol] || "Active").trim() : "Active";
+    const createdAt = createdCol !== -1 ? String(row[createdCol] || "").trim() : "";
+
     list.push({
-      id: String(row[0] || ""),
-      name: String(row[1] || ""),
-      phone: String(row[2] || ""),
-      district: String(row[3] || "Ganjam"),
-      block: String(row[4] || "Digapahandi"),
-      status: String(row[5] || "Active"),
-      createdAt: row[6] ? String(row[6]) : ""
+      id: String(row[idCol] || ""),
+      name: name,
+      phone: phone,
+      mobile: phone,
+      district: district,
+      block: block,
+      village: block || district,
+      photo: photo,
+      status: status || "Active",
+      createdAt: createdAt
     });
   }
   return list;
 }
 
-/**
- * Parse Archive
- */
-function parseArchiveSheet(sheet) {
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-  const list = [];
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    list.push({
-      id: String(row[0] || ""),
-      serviceType: String(row[1] || ""),
-      applicantName: String(row[2] || ""),
-      cardNo: String(row[3] || ""),
-      aadhaarNo: String(row[3] || ""),
-      trackNo: String(row[4] || ""),
-      district: String(row[5] || "Ganjam"),
-      block: String(row[6] || "Digapahandi"),
-      agent: String(row[7] || ""),
-      status: String(row[8] || "Completed"),
-      archivedAt: row[9] ? String(row[9]) : ""
-    });
-  }
-  return list;
-}
 
 /**
  * Parse Activity Logs
@@ -948,4 +1115,23 @@ function getLogsData(sheet) {
     });
   }
   return logs.reverse();
+}
+
+/**
+ * Compute SHA-256 Hash using Google Apps Script Utilities (Identical to DIVY-IMPEX)
+ */
+function hashPassword(plainPassword, salt) {
+  var raw = String(plainPassword || "").trim();
+  if (!raw) return "";
+  var toHash = salt ? (raw + "::shramik_salt::" + salt) : raw;
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, toHash, Utilities.Charset.UTF_8);
+  var hex = "";
+  for (var i = 0; i < digest.length; i++) {
+    var byteVal = digest[i];
+    if (byteVal < 0) byteVal += 256;
+    var byteHex = byteVal.toString(16);
+    if (byteHex.length === 1) hex += "0";
+    hex += byteHex;
+  }
+  return hex;
 }

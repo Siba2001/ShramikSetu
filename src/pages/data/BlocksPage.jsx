@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { MapPin, Search, FileDown, Plus, CheckCircle, Clock, Archive } from 'lucide-react';
+import { MapPin, Search, FileDown, Plus, CheckCircle, Clock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { exportApplications } from '../../utils/exportUtils';
 
 export default function BlocksPage() {
-  const { applications, archivedApplications, allBlocksList, handleAddBlockToDistrict, districts, showToast } = useApp();
+  const { applications, allBlocksList, handleAddBlockToDistrict, districts, showToast } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [newBlockName, setNewBlockName] = useState('');
   const [targetDistrict, setTargetDistrict] = useState('Ganjam');
@@ -14,13 +14,12 @@ export default function BlocksPage() {
   const blockStats = useMemo(() => {
     return allBlocksList.map(blockName => {
       const activeInBlock = applications.filter(a => a.block && a.block.toLowerCase() === blockName.toLowerCase());
-      const archivedInBlock = archivedApplications.filter(a => a.block && a.block.toLowerCase() === blockName.toLowerCase());
 
       const total = activeInBlock.length;
       const pending = activeInBlock.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
       const inProgress = activeInBlock.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
       const approved = activeInBlock.filter(a => a.status === 'Approved').length;
-      const completed = archivedInBlock.length;
+      const completed = activeInBlock.filter(a => a.status === 'Completed').length;
 
       return {
         name: blockName,
@@ -31,7 +30,7 @@ export default function BlocksPage() {
         completed
       };
     }).sort((a, b) => b.total - a.total);
-  }, [allBlocksList, applications, archivedApplications]);
+  }, [allBlocksList, applications]);
 
   const filteredBlocks = useMemo(() => {
     if (!searchTerm.trim()) return blockStats;
@@ -165,7 +164,7 @@ export default function BlocksPage() {
                 <th className="py-3 px-3 text-center">Pending</th>
                 <th className="py-3 px-3 text-center">In Progress</th>
                 <th className="py-3 px-3 text-center">Approved</th>
-                <th className="py-3 px-3 text-center">Completed (Archived)</th>
+                <th className="py-3 px-3 text-center">Completed</th>
                 <th className="py-3 px-4 text-right">Block Report</th>
               </tr>
             </thead>

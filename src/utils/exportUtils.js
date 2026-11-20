@@ -19,12 +19,14 @@ function getModuleDisplayName(serviceType) {
 
 /**
  * Generate Block-wise Official PDF Report
- * Formats clean government letterhead, omits Agent Name, omits repeated Block column.
- * Heading Example: "DIGAPAHANDI NEW CARD LIST"
+ * Formats clean government letterhead.
+ * When a specific block is selected: omits Agent Name and omits repeated Block column.
+ * When "All Blocks" is selected: includes Block column for clear cross-block visibility.
+ * Heading Example: "[SELECTED_BLOCK] [MODULE] LIST" or "ALL BLOCKS [MODULE] LIST"
  */
 export function exportBlockWisePDF(applications, options = {}) {
   const {
-    block = 'Digapahandi',
+    block = 'All',
     service = 'New Card',
     status = 'All',
     maskPII = false
@@ -50,7 +52,8 @@ export function exportBlockWisePDF(applications, options = {}) {
 
   const pageWidth = doc.internal.pageSize.getWidth();
   const moduleName = getModuleDisplayName(service);
-  const blockHeader = (block && block !== 'All') ? block.toUpperCase() : 'ALL BLOCKS';
+  const isSingleBlock = Boolean(block && block !== 'All');
+  const blockHeader = isSingleBlock ? block.toUpperCase() : 'ALL BLOCKS';
   const mainTitle = `${blockHeader} ${moduleName} LIST`;
 
   // 1. Top Decorative Blue Bar
@@ -90,7 +93,7 @@ export function exportBlockWisePDF(applications, options = {}) {
   doc.setLineWidth(0.3);
   doc.line(14, 29, pageWidth - 14, 29);
 
-  // 3. Prepare Columns & Rows tailored to the module (AGENT NAME OMITTED, BLOCK COLUMN OMITTED)
+  // 3. Prepare Columns & Rows tailored to the module (Omits Agent Name)
   const s = String(service || '').toLowerCase();
   const isRenewal = s.includes('renewal') || s.includes('contribution');
   const isDeath = s.includes('death');
@@ -98,33 +101,61 @@ export function exportBlockWisePDF(applications, options = {}) {
   const isNewCard = s.includes('new card');
 
   let tableHeaders = [];
-  if (isNewCard) {
-    tableHeaders = ['SL', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
-  } else if (isRenewal) {
-    tableHeaders = ['SL', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
-  } else if (isMaternity) {
-    tableHeaders = ['SL', 'BENEFICIARY NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
-  } else if (isDeath) {
-    tableHeaders = ['SL', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
+  if (isSingleBlock) {
+    if (isNewCard) {
+      tableHeaders = ['SL', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    } else if (isRenewal) {
+      tableHeaders = ['SL', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    } else if (isMaternity) {
+      tableHeaders = ['SL', 'BENEFICIARY NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
+    } else if (isDeath) {
+      tableHeaders = ['SL', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
+    } else {
+      tableHeaders = ['SL', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    }
   } else {
-    tableHeaders = ['SL', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    if (isNewCard) {
+      tableHeaders = ['SL', 'BLOCK', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    } else if (isRenewal) {
+      tableHeaders = ['SL', 'BLOCK', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    } else if (isMaternity) {
+      tableHeaders = ['SL', 'BLOCK', 'BENEFICIARY NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
+    } else if (isDeath) {
+      tableHeaders = ['SL', 'BLOCK', 'CARD HOLDER NAME', 'SHRAMIK CARD NO', 'TRACKING NO', 'REMARK / NOTES', 'STATUS'];
+    } else {
+      tableHeaders = ['SL', 'BLOCK', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NO', 'STATUS', 'REMARKS'];
+    }
   }
 
   const tableRows = filtered.map((app, index) => {
+    const bName = (app.block || '—').toUpperCase();
     const name = (app.applicantName || '—').toUpperCase();
     const track = app.trackNo || '—';
     const st = app.status || 'Pending';
     const rem = app.remarks || app.officer || '—';
 
-    if (isNewCard) {
-      const aadh = maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || '—');
-      return [index + 1, name, aadh, track, st, rem];
-    } else if (isRenewal || isDeath || isMaternity) {
-      const card = app.cardNo || '—';
-      return [index + 1, name, card, track, rem, st];
+    if (isSingleBlock) {
+      if (isNewCard) {
+        const aadh = maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || '—');
+        return [index + 1, name, aadh, track, st, rem];
+      } else if (isRenewal || isDeath || isMaternity) {
+        const card = app.cardNo || '—';
+        return [index + 1, name, card, track, rem, st];
+      } else {
+        const cardOrAadh = app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '—';
+        return [index + 1, name, cardOrAadh, track, st, rem];
+      }
     } else {
-      const cardOrAadh = app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '—';
-      return [index + 1, name, cardOrAadh, track, st, rem];
+      if (isNewCard) {
+        const aadh = maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || '—');
+        return [index + 1, bName, name, aadh, track, st, rem];
+      } else if (isRenewal || isDeath || isMaternity) {
+        const card = app.cardNo || '—';
+        return [index + 1, bName, name, card, track, rem, st];
+      } else {
+        const cardOrAadh = app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '—';
+        return [index + 1, bName, name, cardOrAadh, track, st, rem];
+      }
     }
   });
 
@@ -151,13 +182,21 @@ export function exportBlockWisePDF(applications, options = {}) {
     alternateRowStyles: {
       fillColor: [248, 250, 252] // light slate
     },
-    columnStyles: {
+    columnStyles: isSingleBlock ? {
       0: { halign: 'center', cellWidth: 10 }, // SL
       1: { fontStyle: 'bold', cellWidth: 50 }, // Name
       2: { cellWidth: 35 },                   // Card / Aadhaar
       3: { cellWidth: 32 },                   // Tracking
       4: { cellWidth: 26 },                   // Status
       5: { cellWidth: 'auto' }                // Remarks
+    } : {
+      0: { halign: 'center', cellWidth: 8 },  // SL
+      1: { cellWidth: 26 },                   // Block
+      2: { fontStyle: 'bold', cellWidth: 46 }, // Name
+      3: { cellWidth: 30 },                   // Card / Aadhaar
+      4: { cellWidth: 28 },                   // Tracking
+      5: { cellWidth: 22 },                   // Status
+      6: { cellWidth: 'auto' }                // Remarks
     },
     margin: { left: 14, right: 14 },
     didDrawPage: (data) => {
@@ -179,7 +218,7 @@ export function exportBlockWisePDF(applications, options = {}) {
     }
   });
 
-  const cleanBlockName = (block && block !== 'All') ? block.replace(/\s+/g, '_') : 'All_Blocks';
+  const cleanBlockName = isSingleBlock ? block.replace(/\s+/g, '_') : 'All_Blocks';
   const cleanServiceName = moduleName.replace(/\s+/g, '_');
   const filename = `${cleanBlockName}_${cleanServiceName}_LIST_${new Date().toISOString().slice(0, 10)}.pdf`;
 
@@ -189,12 +228,12 @@ export function exportBlockWisePDF(applications, options = {}) {
 
 /**
  * Generate Block-wise Official Excel Report (.xlsx)
- * Heading Example: Row 1 = "DIGAPAHANDI NEW CARD LIST"
- * Omits Agent Name and omits repeated Block column.
+ * Heading Example: Row 1 = "[SELECTED_BLOCK] [MODULE] LIST" or "ALL BLOCKS [MODULE] LIST"
+ * Omits Agent Name. If single block selected, omits repeated Block column.
  */
 export function exportBlockWiseExcel(applications, options = {}) {
   const {
-    block = 'Digapahandi',
+    block = 'All',
     service = 'New Card',
     status = 'All',
     maskPII = false
@@ -212,8 +251,9 @@ export function exportBlockWiseExcel(applications, options = {}) {
     filtered = filtered.filter(a => (a.status || '').toLowerCase() === status.toLowerCase());
   }
 
+  const isSingleBlock = Boolean(block && block !== 'All');
   const moduleName = getModuleDisplayName(service);
-  const blockHeader = (block && block !== 'All') ? block.toUpperCase() : 'ALL BLOCKS';
+  const blockHeader = isSingleBlock ? block.toUpperCase() : 'ALL BLOCKS';
   const mainTitle = `${blockHeader} ${moduleName} LIST`;
 
   const s = String(service || '').toLowerCase();
@@ -231,44 +271,80 @@ export function exportBlockWiseExcel(applications, options = {}) {
     [] // Row 3: Blank separator
   ];
 
-  // Row 4: Column Headers (NO AGENT, NO BLOCK)
-  if (isNewCard) {
-    sheetAOA.push(['SL NO', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
-  } else if (isRenewal) {
-    sheetAOA.push(['SL NO', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
-  } else if (isMaternity) {
-    sheetAOA.push(['SL NO', 'BENEFICIARY NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
-  } else if (isDeath) {
-    sheetAOA.push(['SL NO', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
+  // Row 4: Column Headers
+  if (isSingleBlock) {
+    if (isNewCard) {
+      sheetAOA.push(['SL NO', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
+    } else if (isRenewal) {
+      sheetAOA.push(['SL NO', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
+    } else if (isMaternity) {
+      sheetAOA.push(['SL NO', 'BENEFICIARY NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
+    } else if (isDeath) {
+      sheetAOA.push(['SL NO', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
+    } else {
+      sheetAOA.push(['SL NO', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS']);
+    }
   } else {
-    sheetAOA.push(['SL NO', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS']);
+    if (isNewCard) {
+      sheetAOA.push(['SL NO', 'BLOCK', 'APPLICANT NAME', 'AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
+    } else if (isRenewal) {
+      sheetAOA.push(['SL NO', 'BLOCK', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS / OFFICER']);
+    } else if (isMaternity) {
+      sheetAOA.push(['SL NO', 'BLOCK', 'BENEFICIARY NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
+    } else if (isDeath) {
+      sheetAOA.push(['SL NO', 'BLOCK', 'CARD HOLDER NAME', 'NIRMAN SHRAMIK CARD NO', 'TRACKING NUMBER', 'REMARK / NOTES', 'STATUS']);
+    } else {
+      sheetAOA.push(['SL NO', 'BLOCK', 'BENEFICIARY NAME', 'CARD / AADHAAR NO', 'TRACKING NUMBER', 'STATUS', 'REMARKS']);
+    }
   }
 
   // Row 5+: Data Rows
   filtered.forEach((app, idx) => {
     const sl = idx + 1;
+    const bName = sanitizeSpreadsheetValue((app.block || '').toUpperCase());
     const name = sanitizeSpreadsheetValue((app.applicantName || '').toUpperCase());
     const track = sanitizeSpreadsheetValue(app.trackNo || '');
     const st = sanitizeSpreadsheetValue(app.status || 'Pending');
     const rem = sanitizeSpreadsheetValue(app.remarks || app.officer || '');
 
-    if (isNewCard) {
-      const aadh = sanitizeSpreadsheetValue(maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || ''));
-      sheetAOA.push([sl, name, aadh, track, st, rem]);
-    } else if (isRenewal || isDeath || isMaternity) {
-      const card = sanitizeSpreadsheetValue(app.cardNo || '');
-      sheetAOA.push([sl, name, card, track, rem, st]);
+    if (isSingleBlock) {
+      if (isNewCard) {
+        const aadh = sanitizeSpreadsheetValue(maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || ''));
+        sheetAOA.push([sl, name, aadh, track, st, rem]);
+      } else if (isRenewal || isDeath || isMaternity) {
+        const card = sanitizeSpreadsheetValue(app.cardNo || '');
+        sheetAOA.push([sl, name, card, track, rem, st]);
+      } else {
+        const cardOrAadh = sanitizeSpreadsheetValue(app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '');
+        sheetAOA.push([sl, name, cardOrAadh, track, st, rem]);
+      }
     } else {
-      const cardOrAadh = sanitizeSpreadsheetValue(app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '');
-      sheetAOA.push([sl, name, cardOrAadh, track, st, rem]);
+      if (isNewCard) {
+        const aadh = sanitizeSpreadsheetValue(maskPII ? maskAadhaar(app.aadhaarNo) : (app.aadhaarNo || ''));
+        sheetAOA.push([sl, bName, name, aadh, track, st, rem]);
+      } else if (isRenewal || isDeath || isMaternity) {
+        const card = sanitizeSpreadsheetValue(app.cardNo || '');
+        sheetAOA.push([sl, bName, name, card, track, rem, st]);
+      } else {
+        const cardOrAadh = sanitizeSpreadsheetValue(app.cardNo || (maskPII ? maskAadhaar(app.aadhaarNo) : app.aadhaarNo) || '');
+        sheetAOA.push([sl, bName, name, cardOrAadh, track, st, rem]);
+      }
     }
   });
 
   const worksheet = XLSX.utils.aoa_to_sheet(sheetAOA);
 
   // Column Widths
-  worksheet['!cols'] = [
+  worksheet['!cols'] = isSingleBlock ? [
     { wch: 8 },  // SL
+    { wch: 30 }, // Name
+    { wch: 24 }, // Card / Aadhaar
+    { wch: 22 }, // Tracking
+    { wch: 20 }, // Status / Remark
+    { wch: 35 }  // Remarks
+  ] : [
+    { wch: 8 },  // SL
+    { wch: 20 }, // Block
     { wch: 30 }, // Name
     { wch: 24 }, // Card / Aadhaar
     { wch: 22 }, // Tracking
@@ -277,16 +353,17 @@ export function exportBlockWiseExcel(applications, options = {}) {
   ];
 
   // Merge header cells across columns
+  const lastColIdx = isSingleBlock ? 5 : 6;
   worksheet['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, // Row 1 Title
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }  // Row 2 Subtitle
+    { s: { r: 0, c: 0 }, e: { r: 0, c: lastColIdx } }, // Row 1 Title
+    { s: { r: 1, c: 0 }, e: { r: 1, c: lastColIdx } }  // Row 2 Subtitle
   ];
 
   const workbook = XLSX.utils.book_new();
   const sheetTabName = `${blockHeader.slice(0, 15)} ${moduleName.slice(0, 10)}`;
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetTabName);
 
-  const cleanBlockName = (block && block !== 'All') ? block.replace(/\s+/g, '_') : 'All_Blocks';
+  const cleanBlockName = isSingleBlock ? block.replace(/\s+/g, '_') : 'All_Blocks';
   const cleanServiceName = moduleName.replace(/\s+/g, '_');
   const filename = `${cleanBlockName}_${cleanServiceName}_LIST_${new Date().toISOString().slice(0, 10)}.xlsx`;
 

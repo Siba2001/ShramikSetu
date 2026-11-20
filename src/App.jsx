@@ -9,7 +9,6 @@ import AdminSecurityPage from './pages/AdminSecurityPage';
 import DashboardPage from './pages/DashboardPage';
 import ApplicationModulePage from './pages/ApplicationModulePage';
 import AgentsPage from './pages/data/AgentsPage';
-import ArchivePage from './pages/ArchivePage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 // Icons
@@ -129,9 +128,6 @@ export default function App() {
             {/* 3. Agent Management */}
             <Route path="data/agents" element={<AgentsPage />} />
             <Route path="agents" element={<Navigate to="/data/agents" replace />} />
-
-            {/* 4. Completed Archive */}
-            <Route path="archive" element={<ArchivePage />} />
 
             {/* Catch-all */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />

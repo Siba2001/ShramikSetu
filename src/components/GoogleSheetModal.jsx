@@ -148,7 +148,6 @@ export default function GoogleSheetModal({
               <span className="px-2 py-0.5 rounded bg-pink-100 text-pink-800 font-medium">Maternity_Benefit</span>
               <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-medium">Death_Benefit</span>
               <span className="px-2 py-0.5 rounded bg-indigo-100 text-indigo-800 font-medium">Users</span>
-              <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">Completed_Archive</span>
               <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 font-medium">Activity_Logs</span>
             </div>
           </div>

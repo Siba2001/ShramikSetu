@@ -1,9 +1,15 @@
 /**
  * =========================================================================
- * SHRAMIK SETU - BACKEND CONFIGURATION
- * Maintain your Google Apps Script Web App Endpoint here.
+ * SHRAMIK SETU - BACKEND ENVIRONMENT CONFIGURATION
+ * Loads Google Apps Script Web App Endpoint & API Secret exclusively from .env
+ * Zero hardcoded credentials or duplicate data.
  * =========================================================================
  */
 
-export const GOOGLE_SCRIPT_WEB_APP_URL = 
-  'https://script.google.com/macros/s/AKfycbxKXlMxwE6DqfOkL8K3nV9mQhPX3xupWxYcyD7gIPLXtiaaQBMulv1k2mUBmhyD2ysN/exec';
+export const GOOGLE_SCRIPT_WEB_APP_URL = (import.meta.env.VITE_GOOGLE_SCRIPT_URL || '').trim();
+
+export const API_SECRET = (import.meta.env.VITE_API_SECRET || '').trim();
+
+export const isBackendConfigured = Boolean(
+  GOOGLE_SCRIPT_WEB_APP_URL && GOOGLE_SCRIPT_WEB_APP_URL.startsWith('http')
+);

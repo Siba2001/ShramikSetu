@@ -233,7 +233,7 @@ export default function ViewDetailsModal() {
               </button>
               <button
                 onClick={() => {
-                  if (window.confirm('Mark Completed? It will be removed from active database and archived.')) {
+                  if (window.confirm('Mark this application as Completed?')) {
                     handleStatusChange('Completed');
                   }
                 }}

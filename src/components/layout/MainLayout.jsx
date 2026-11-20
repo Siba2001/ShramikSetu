@@ -11,6 +11,7 @@ import AddAgentModal from '../AddAgentModal';
 import SessionLockModal from '../auth/SessionLockModal';
 import SessionTrackerModal from '../auth/SessionTrackerModal';
 import LogoutConfirmModal from '../auth/LogoutConfirmModal';
+import SessionTimeoutWarningModal from '../auth/SessionTimeoutWarningModal';
 import { useApp } from '../../context/AppContext';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
@@ -36,6 +37,10 @@ export default function MainLayout() {
     setIsAddAgentOpen,
     isSessionTrackerOpen,
     setIsSessionTrackerOpen,
+    isSessionWarningOpen,
+    sessionWarningRemaining,
+    handleExtendSession,
+    handleLogout,
     refreshData
   } = useApp();
 
@@ -52,7 +57,6 @@ export default function MainLayout() {
     if (p === '/applications/death-benefit') return 'Death Benefit Assistance';
     if (p === '/applications/education-assistance') return 'Education Assistance Grants';
     if (p === '/data/agents') return 'Agent / Worker Management';
-    if (p === '/archive') return 'Completed Applications Archive';
     return 'ShramikSetu Management';
   };
 
@@ -148,6 +152,14 @@ export default function MainLayout() {
       <SessionTrackerModal
         isOpen={isSessionTrackerOpen}
         onClose={() => setIsSessionTrackerOpen(false)}
+      />
+
+      {/* 1-Hour Session Policy Permission Modal */}
+      <SessionTimeoutWarningModal
+        isOpen={isSessionWarningOpen}
+        remainingSeconds={sessionWarningRemaining}
+        onExtendSession={handleExtendSession}
+        onLogoutNow={() => handleLogout(true)}
       />
 
     </div>

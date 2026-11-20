@@ -6,7 +6,6 @@ import {
   HelpCircle, 
   CheckCircle2, 
   AlertTriangle, 
-  Archive, 
   ArrowUpRight, 
   TrendingUp, 
   Building, 
@@ -28,7 +27,6 @@ import { Link } from 'react-router-dom';
 export default function DashboardPage() {
   const { 
     applications, 
-    archivedApplications, 
     stats, 
     handleOpenAddModal, 
     handleOpenExportModal, 
@@ -179,7 +177,7 @@ export default function DashboardPage() {
         <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 mb-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600">Completed</span>
-            <Archive className="w-4 h-4 text-slate-500" />
+            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-2xl font-black text-slate-800">{stats.completed}</div>
           <p className="text-[10.5px] text-slate-400 mt-0.5">Cleared & Saved</p>

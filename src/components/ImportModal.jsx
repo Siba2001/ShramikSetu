@@ -6,7 +6,7 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }) {
   const [file, setFile] = useState(null);
   const [previewRows, setPreviewRows] = useState([]);
   const [totalRows, setTotalRows] = useState(0);
-  const [defaultBlock, setDefaultBlock] = useState('Digapahandi');
+  const [defaultBlock, setDefaultBlock] = useState('');
   const [defaultService, setDefaultService] = useState('Card Renewal');
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');

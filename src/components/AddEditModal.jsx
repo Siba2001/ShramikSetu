@@ -26,7 +26,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
     aadhaarNo: '',
     trackNo: '',
     district: 'Ganjam',
-    block: 'Digapahandi',
+    block: '',
     agent: '',
     officer: '',
     status: 'Pending',
@@ -47,7 +47,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
         aadhaarNo: applicationToEdit.aadhaarNo || '',
         trackNo: applicationToEdit.trackNo || '',
         district: applicationToEdit.district || 'Ganjam',
-        block: applicationToEdit.block || 'Digapahandi',
+        block: applicationToEdit.block || '',
         agent: applicationToEdit.agent || '',
         officer: applicationToEdit.officer || '',
         status: applicationToEdit.status || 'Pending',
@@ -63,7 +63,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
         aadhaarNo: '',
         trackNo: '',
         district: 'Ganjam',
-        block: 'Digapahandi',
+        block: '',
         agent: '',
         officer: '',
         status: 'Pending',
@@ -770,7 +770,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                       <option value="In Progress">In Progress</option>
                       <option value="Query Raised">Query Raised (Q)</option>
                       <option value="Approved">Approved</option>
-                      <option value="Completed">Completed (Auto-archive & Delete)</option>
+                      <option value="Completed">Completed</option>
                       <option value="Bank Reject">Bank Reject</option>
                     </select>
                   </div>

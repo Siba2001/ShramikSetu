@@ -44,9 +44,33 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
 
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const dataUrl = evt.target.result;
-      setPhotoPreview(dataUrl);
-      setFormData(prev => ({ ...prev, photo: dataUrl }));
+      const img = new Image();
+      img.onload = () => {
+        // Compress avatar to small thumbnail (< 3KB) so it saves seamlessly in Google Sheets
+        const canvas = document.createElement('canvas');
+        const maxDim = 96;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressed = canvas.toDataURL('image/jpeg', 0.75);
+        setPhotoPreview(compressed);
+        setFormData(prev => ({ ...prev, photo: compressed }));
+      };
+      img.src = evt.target.result;
     };
     reader.readAsDataURL(file);
   };
@@ -61,14 +85,14 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
     return Object.keys(err).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
     if (agentToEdit) {
-      handleUpdateAgent(agentToEdit.id, formData);
+      await handleUpdateAgent(agentToEdit.id, formData);
     } else {
-      const created = handleAddAgent(formData);
+      const created = await handleAddAgent(formData);
       if (onAgentCreated) {
         onAgentCreated(created);
       }

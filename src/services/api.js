@@ -3,18 +3,20 @@
  * Handles POST/GET requests, CORS, text/plain payloads, and structured responses.
  */
 
-import { getGoogleScriptUrl } from './db';
+import { GOOGLE_SCRIPT_WEB_APP_URL, API_SECRET, isBackendConfigured } from '../config/backendConfig';
 
 /**
  * Perform GET request to Google Apps Script Web App
  */
 export async function apiGet(action, params = {}) {
-  const baseUrl = getGoogleScriptUrl();
-  if (!baseUrl) return null;
+  if (!isBackendConfigured) return null;
 
   try {
-    const url = new URL(baseUrl);
+    const url = new URL(GOOGLE_SCRIPT_WEB_APP_URL);
     url.searchParams.set('action', action);
+    if (API_SECRET) {
+      url.searchParams.set('secret', API_SECRET);
+    }
     Object.keys(params).forEach(k => {
       if (params[k] !== undefined && params[k] !== null) {
         url.searchParams.set(k, String(params[k]));
@@ -45,16 +47,16 @@ export async function apiGet(action, params = {}) {
  * Uses text/plain to avoid CORS preflight issues with Google Apps Script
  */
 export async function apiPost(action, payload = {}) {
-  const baseUrl = getGoogleScriptUrl();
-  if (!baseUrl) return null;
+  if (!isBackendConfigured) return null;
 
   try {
     const bodyString = JSON.stringify({
       action,
+      secret: API_SECRET,
       payload
     });
 
-    const response = await fetch(baseUrl, {
+    const response = await fetch(GOOGLE_SCRIPT_WEB_APP_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'

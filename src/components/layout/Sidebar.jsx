@@ -14,7 +14,6 @@ import {
   GraduationCap, 
   Database, 
   UserCheck, 
-  Archive, 
   Settings, 
   ExternalLink,
   ChevronLeft,
@@ -287,33 +286,6 @@ export default function Sidebar() {
                 <UserCheck className="w-4 h-4 shrink-0 text-blue-600" />
                 {!sidebarCollapsed && <span>Agent Management</span>}
               </div>
-            </NavLink>
-          </div>
-
-          {/* System Section */}
-          <div className="space-y-1">
-            {!sidebarCollapsed && (
-              <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-                System & Archive
-              </div>
-            )}
-
-            {/* Completed Archive */}
-            <NavLink
-              to="/archive"
-              onClick={closeMobile}
-              className={getNavLinkClass}
-              title="Completed Archive"
-            >
-              <div className="flex items-center space-x-3">
-                <Archive className="w-4 h-4 shrink-0" />
-                {!sidebarCollapsed && <span>Completed Archive</span>}
-              </div>
-              {!sidebarCollapsed && stats.completed > 0 && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-100 text-slate-700">
-                  {stats.completed}
-                </span>
-              )}
             </NavLink>
           </div>
 

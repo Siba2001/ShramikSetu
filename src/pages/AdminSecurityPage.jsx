@@ -42,6 +42,18 @@ export default function AdminSecurityPage() {
   const [gateError, setGateError] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
 
+  // Ensure dark background and eliminate white flash on refresh
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+    document.documentElement.style.backgroundColor = '#070d1e';
+    document.body.style.backgroundColor = '#070d1e';
+    return () => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.backgroundColor = '#f8fafc';
+      document.body.style.backgroundColor = '#f8fafc';
+    };
+  }, []);
+
   // Management State
   const [activeTab, setActiveTab] = useState('reset'); // 'reset' | 'create' | 'accounts' | 'logs'
   const [accounts, setAccounts] = useState([]);

@@ -1,29 +1,22 @@
-import { INITIAL_APPLICATIONS } from '../data/initialData';
 import { INITIAL_DISTRICTS } from '../data/locationData';
-import { INITIAL_AGENTS } from '../data/agentData';
 import { GOOGLE_SCRIPT_WEB_APP_URL } from '../config/backendConfig';
+import { apiGet, apiPost } from './api';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
-const COMPLETED_ARCHIVE_KEY = 'shramik_setu_completed_archive_v2';
-const GOOGLE_SCRIPT_URL_KEY = 'shramik_setu_gas_url_v1';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
 const AGENTS_STORAGE_KEY = 'shramik_setu_agents_v1';
 
-export const PRODUCTION_GOOGLE_SCRIPT_URL = GOOGLE_SCRIPT_WEB_APP_URL;
+// Legacy dummy agent names to auto-purge from localStorage
+const LEGACY_DUMMY_NAMES = [
+  'kalu', 'litu', 'daitari', 'pana', 'dilip', 
+  'krushna', 'babula', 'bidya', 'ranjan dabarasingi', 'niranjan'
+];
 
 /**
- * Get configured Google Apps Script Web App URL
- * Maintained securely directly in code to avoid exposing or tampering in the UI
+ * Get configured Google Apps Script Web App URL from environment
  */
 export function getGoogleScriptUrl() {
   return GOOGLE_SCRIPT_WEB_APP_URL;
-}
-
-/**
- * Save Google Apps Script Web App URL (Deprecated - Maintained in code)
- */
-export function setGoogleScriptUrl(url) {
-  // Maintained in code
 }
 
 /**
@@ -55,29 +48,6 @@ export function saveApplications(apps) {
 }
 
 /**
- * Load completed & archived applications
- */
-export function loadArchivedApplications() {
-  try {
-    const raw = localStorage.getItem(COMPLETED_ARCHIVE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-/**
- * Save completed & archived applications
- */
-export function saveArchivedApplications(archive) {
-  try {
-    localStorage.setItem(COMPLETED_ARCHIVE_KEY, JSON.stringify(archive));
-  } catch (e) {
-    console.error('Failed to save archive:', e);
-  }
-}
-
-/**
  * Load Districts & their Blocks
  */
 export function loadDistricts() {
@@ -105,18 +75,33 @@ export function saveDistricts(districts) {
 }
 
 /**
- * Load Agents with detailed profiles (name, mobile, village, photo)
+ * Load Agents from storage - 100% database driven with zero hardcoded dummy data
  */
 export function loadAgents() {
   try {
     const raw = localStorage.getItem(AGENTS_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(INITIAL_AGENTS));
-      return INITIAL_AGENTS;
+      return [];
     }
-    return JSON.parse(raw);
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+
+    // Automatically purge any old hardcoded fake agents left behind from earlier versions
+    const cleaned = list.filter(a => {
+      if (!a || !a.name) return false;
+      const lower = a.name.trim().toLowerCase();
+      if (LEGACY_DUMMY_NAMES.includes(lower) && String(a.id || '').startsWith('ag-')) {
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length !== list.length) {
+      localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (e) {
-    return INITIAL_AGENTS;
+    return [];
   }
 }
 
@@ -125,62 +110,96 @@ export function loadAgents() {
  */
 export function saveAgents(agents) {
   try {
-    localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(agents));
+    const list = Array.isArray(agents) ? agents : [];
+    localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     console.error('Failed to save agents:', e);
   }
 }
 
 /**
- * Add a new Agent
+ * Fetch Agents directly from Google Sheets backend
  */
-export function addAgent(agentData) {
+export async function fetchAgentsFromBackend() {
+  try {
+    const res = await apiGet('getAgents');
+    if (res && res.success && Array.isArray(res.agents)) {
+      saveAgents(res.agents);
+      return res.agents;
+    }
+  } catch (e) {
+    console.warn('Notice: Backend fetch for agents:', e);
+  }
+  return loadAgents();
+}
+
+/**
+ * Add a new Agent - pushes to Google Sheets database
+ */
+export async function addAgent(agentData) {
   const agents = loadAgents();
+  const id = `AG-${Date.now()}`;
+  const phone = (agentData.mobile || agentData.phone || '').trim();
+  const village = (agentData.village || agentData.block || '').trim();
   const newAgent = {
-    id: `ag-${Date.now()}`,
+    id,
     name: agentData.name.trim(),
-    mobile: (agentData.mobile || '').trim(),
-    village: (agentData.village || '').trim(),
+    mobile: phone,
+    phone: phone,
+    village: village,
+    block: village,
+    district: agentData.district || 'Ganjam',
     photo: agentData.photo || '',
+    status: 'Active',
     createdAt: new Date().toISOString()
   };
+
   agents.unshift(newAgent);
   saveAgents(agents);
 
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'addAgent', payload: newAgent })
-      }).catch(() => {});
-    } catch (e) {}
+  // Sync to Google Sheet backend
+  try {
+    await apiPost('addAgent', newAgent);
+  } catch (err) {
+    console.warn('Backend sync warning for addAgent:', err);
   }
 
   return newAgent;
 }
 
 /**
- * Update an existing Agent
+ * Update an existing Agent - pushes to Google Sheets database
  */
-export function updateAgent(id, updates) {
+export async function updateAgent(id, updates) {
   const agents = loadAgents();
   const index = agents.findIndex(a => a.id === id);
   if (index === -1) return null;
 
   const oldName = agents[index].name;
+  const phone = (updates.mobile || updates.phone || agents[index].mobile || '').trim();
+  const village = (updates.village || updates.block || agents[index].village || '').trim();
+
   const updatedAgent = {
     ...agents[index],
-    name: updates.name.trim(),
-    mobile: (updates.mobile || '').trim(),
-    village: (updates.village || '').trim(),
+    name: (updates.name || agents[index].name).trim(),
+    mobile: phone,
+    phone: phone,
+    village: village,
+    block: village,
+    district: updates.district || agents[index].district || 'Ganjam',
     photo: updates.photo !== undefined ? updates.photo : agents[index].photo,
     updatedAt: new Date().toISOString()
   };
 
   agents[index] = updatedAgent;
   saveAgents(agents);
+
+  // Sync to Google Sheet backend
+  try {
+    await apiPost('updateAgent', { ...updatedAgent, oldName });
+  } catch (err) {
+    console.warn('Backend sync warning for updateAgent:', err);
+  }
 
   // If agent name changed, update matching applications
   if (oldName && updates.name && oldName.toLowerCase() !== updates.name.trim().toLowerCase()) {
@@ -205,23 +224,19 @@ export function updateAgent(id, updates) {
 }
 
 /**
- * Delete an Agent
+ * Delete an Agent - removes from Google Sheets database
  */
-export function deleteAgent(id) {
+export async function deleteAgent(id) {
   const agents = loadAgents();
   const target = agents.find(a => a.id === id || a.name === id);
   const filtered = agents.filter(a => a.id !== id && a.name !== id);
   saveAgents(filtered);
 
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'deleteAgent', payload: { id, name: target ? target.name : id } })
-      }).catch(() => {});
-    } catch (e) {}
+  // Sync to Google Sheet backend
+  try {
+    await apiPost('deleteAgent', { id, name: target ? target.name : id });
+  } catch (err) {
+    console.warn('Backend sync warning for deleteAgent:', err);
   }
 
   return filtered;
@@ -232,9 +247,9 @@ export function deleteAgent(id) {
  */
 export function clearAllData() {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
-  localStorage.setItem(COMPLETED_ARCHIVE_KEY, JSON.stringify([]));
   localStorage.removeItem('shramik_setu_applications_v1');
   localStorage.removeItem('shramik_setu_completed_archive_v1');
+  localStorage.removeItem('shramik_setu_completed_archive_v2');
   return [];
 }
 
@@ -252,8 +267,8 @@ export async function addApplication(appData) {
     cardNo: (appData.cardNo || '').trim(),
     aadhaarNo: (appData.aadhaarNo || '').trim(),
     trackNo: (appData.trackNo || '').trim(),
-    district: appData.district || 'Ganjam',
-    block: appData.block || 'Digapahandi',
+    district: (appData.district || 'Ganjam').trim(),
+    block: (appData.block || '').trim(),
     agent: (appData.agent || '').trim(),
     officer: (appData.officer || '').trim(),
     status: appData.status || 'Pending',
@@ -267,26 +282,14 @@ export async function addApplication(appData) {
   apps.unshift(newApp);
   saveApplications(apps);
 
-  // Sync with Google Sheet if configured
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'add', payload: newApp })
-      });
-    } catch (err) {
-      console.warn('Google Sheet sync notice:', err);
-    }
-  }
+  // Sync with Google Sheet backend
+  apiPost('add', newApp).catch(err => console.warn('Google Sheet sync notice:', err));
 
   return newApp;
 }
 
 /**
  * Update an existing application
- * If status is changed to "Completed", it removes it from the active database!
  */
 export async function updateApplication(id, updates) {
   const apps = loadApplications();
@@ -300,46 +303,10 @@ export async function updateApplication(id, updates) {
     updatedAt: now
   };
 
-  // If status is "Completed", delete from active database and store in Completed Archive!
-  if (updated.status === 'Completed') {
-    apps.splice(index, 1);
-    saveApplications(apps);
-
-    const archive = loadArchivedApplications();
-    archive.unshift(updated);
-    saveArchivedApplications(archive);
-
-    const gasUrl = getGoogleScriptUrl();
-    if (gasUrl) {
-      try {
-        await fetch(gasUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'delete', payload: { id } })
-        });
-      } catch (err) {
-        console.warn('Google Sheet delete notice:', err);
-      }
-    }
-
-    return { completedAndDeleted: true, record: updated };
-  }
-
   apps[index] = updated;
   saveApplications(apps);
 
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'update', payload: updated })
-      });
-    } catch (err) {
-      console.warn('Google Sheet update notice:', err);
-    }
-  }
+  apiPost('update', updated).catch(err => console.warn('Google Sheet update notice:', err));
 
   return { completedAndDeleted: false, record: updated };
 }
@@ -347,68 +314,17 @@ export async function updateApplication(id, updates) {
 /**
  * Delete application explicitly
  */
-export async function deleteApplication(id, archiveFirst = true) {
+export async function deleteApplication(id) {
   const apps = loadApplications();
   const index = apps.findIndex(a => a.id === id);
   if (index === -1) return false;
 
-  const [removed] = apps.splice(index, 1);
+  apps.splice(index, 1);
   saveApplications(apps);
 
-  if (archiveFirst && removed) {
-    const archive = loadArchivedApplications();
-    archive.unshift(removed);
-    saveArchivedApplications(archive);
-  }
-
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'delete', payload: { id } })
-      });
-    } catch (err) {
-      console.warn('Google Sheet delete notice:', err);
-    }
-  }
+  apiPost('delete', { id }).catch(err => console.warn('Google Sheet delete notice:', err));
 
   return true;
-}
-
-/**
- * Restore an application from Completed Archive back into active database
- */
-export async function restoreArchivedApplication(id) {
-  const archive = loadArchivedApplications();
-  const index = archive.findIndex(a => a.id === id);
-  if (index === -1) return false;
-
-  const [restored] = archive.splice(index, 1);
-  saveArchivedApplications(archive);
-
-  restored.status = 'In Progress';
-  restored.updatedAt = new Date().toISOString();
-
-  const apps = loadApplications();
-  apps.unshift(restored);
-  saveApplications(apps);
-
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'add', payload: restored })
-      });
-    } catch (err) {
-      console.warn('Google Sheet restore notice:', err);
-    }
-  }
-
-  return restored;
 }
 
 /**
@@ -424,8 +340,8 @@ export async function batchImportApplications(items) {
     cardNo: (item.cardNo || '').trim(),
     aadhaarNo: (item.aadhaarNo || '').trim(),
     trackNo: (item.trackNo || '').trim(),
-    district: item.district || 'Ganjam',
-    block: item.block || 'Digapahandi',
+    district: (item.district || 'Ganjam').trim(),
+    block: (item.block || '').trim(),
     agent: (item.agent || '').trim(),
     officer: (item.officer || '').trim(),
     status: item.status || 'Pending',
@@ -439,18 +355,7 @@ export async function batchImportApplications(items) {
   const combined = [...formatted, ...apps];
   saveApplications(combined);
 
-  const gasUrl = getGoogleScriptUrl();
-  if (gasUrl) {
-    try {
-      await fetch(gasUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'batchImport', payload: { items: formatted } })
-      });
-    } catch (err) {
-      console.warn('Google Sheet batch import notice:', err);
-    }
-  }
+  apiPost('batchImport', { items: formatted }).catch(err => console.warn('Google Sheet batch import notice:', err));
 
   return formatted.length;
 }
@@ -459,34 +364,20 @@ export async function batchImportApplications(items) {
  * Fetch latest data from Google Sheet Web App
  */
 export async function fetchFromGoogleSheet() {
-  const gasUrl = getGoogleScriptUrl();
-  if (!gasUrl) throw new Error('Google Apps Script URL is not configured.');
-
   // 1. Fetch Active Applications
-  const res = await fetch(`${gasUrl}?action=getAll`);
-  const data = await res.json();
-  if (!data.success) throw new Error(data.error || 'Failed to fetch from Google Sheet');
+  const data = await apiGet('getAll');
+  if (!data || !data.success) {
+    throw new Error((data && data.error) || 'Failed to fetch from Google Sheet');
+  }
 
   if (Array.isArray(data.data)) {
     saveApplications(data.data);
   }
 
-  // 2. Fetch Archived Applications
+  // 2. Fetch Agents
   try {
-    const archRes = await fetch(`${gasUrl}?action=getArchived`);
-    const archData = await archRes.json();
-    if (archData.success && Array.isArray(archData.data)) {
-      saveArchivedApplications(archData.data);
-    }
-  } catch (e) {
-    console.warn('Archive sync notice:', e);
-  }
-
-  // 3. Fetch Agents
-  try {
-    const agentRes = await fetch(`${gasUrl}?action=getAgents`);
-    const agentData = await agentRes.json();
-    if (agentData.success && Array.isArray(agentData.agents) && agentData.agents.length > 0) {
+    const agentData = await apiGet('getAgents');
+    if (agentData && agentData.success && Array.isArray(agentData.agents)) {
       saveAgents(agentData.agents);
     }
   } catch (e) {
@@ -500,16 +391,10 @@ export async function fetchFromGoogleSheet() {
  * Push all local applications to Google Sheet
  */
 export async function pushAllToGoogleSheet() {
-  const gasUrl = getGoogleScriptUrl();
-  if (!gasUrl) throw new Error('Google Apps Script URL is not configured.');
-
   const apps = loadApplications();
-  const res = await fetch(gasUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: 'batchImport', payload: { items: apps } })
-  });
-  const result = await res.json();
-  if (!result.success) throw new Error(result.error || 'Failed to upload to Google Sheet');
+  const result = await apiPost('batchImport', { items: apps });
+  if (!result || !result.success) {
+    throw new Error((result && result.error) || 'Failed to upload to Google Sheet');
+  }
   return result;
 }

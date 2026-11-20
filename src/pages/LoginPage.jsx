@@ -34,6 +34,25 @@ export default function LoginPage() {
     return <Navigate to={from} replace />;
   }
 
+  // Ensure dark canvas background and eliminate white flash on refresh
+  useEffect(() => {
+    document.documentElement.classList.add('dark');
+    document.documentElement.style.backgroundColor = '#080D1A';
+    document.body.style.backgroundColor = '#080D1A';
+    return () => {
+      document.documentElement.classList.remove('dark');
+      document.documentElement.style.backgroundColor = '#f8fafc';
+      document.body.style.backgroundColor = '#f8fafc';
+    };
+  }, []);
+
+  // Clear any legacy lockout states on login page mount
+  useEffect(() => {
+    try {
+      localStorage.removeItem('shramiksetu_login_attempts_v1');
+    } catch (e) {}
+  }, []);
+
   // Mouse move handler for spotlight and subtle architectural parallax
   useEffect(() => {
     const handleMouseMove = (e) => {

@@ -3,7 +3,7 @@ import { Users, Search, AlertCircle, Eye, Phone, CreditCard, Hash, MapPin, Check
 import { useApp } from '../../context/AppContext';
 
 export default function ApplicantsPage() {
-  const { applications, archivedApplications, handleOpenViewModal } = useApp();
+  const { applications, handleOpenViewModal } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWorkerKey, setSelectedWorkerKey] = useState(null);
 
@@ -11,7 +11,7 @@ export default function ApplicantsPage() {
   const workerRegistry = useMemo(() => {
     const map = new Map();
 
-    const allRecords = [...applications, ...archivedApplications];
+    const allRecords = applications;
 
     allRecords.forEach(app => {
       // Identity key
@@ -40,7 +40,7 @@ export default function ApplicantsPage() {
     });
 
     return Array.from(map.values()).sort((a, b) => b.applications.length - a.applications.length);
-  }, [applications, archivedApplications]);
+  }, [applications]);
 
   // Filtered workers
   const filteredWorkers = useMemo(() => {

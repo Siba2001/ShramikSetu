@@ -68,7 +68,7 @@ export default function ExportModal({ isOpen, onClose, applications }) {
           status: selectedStatus
         });
       } else if (exportFormat === 'xlsx') {
-        // Block-wise Official Excel Report (Row 1 Header: e.g. "DIGAPAHANDI NEW CARD LIST", omits Agent)
+        // Block-wise Official Excel Report (Row 1 Header: e.g. "[BLOCK] [MODULE] LIST", omits Agent)
         result = exportBlockWiseExcel(applications, {
           block: selectedBlock,
           service: selectedService !== 'All' ? selectedService : 'New Card',
@@ -245,7 +245,7 @@ export default function ExportModal({ isOpen, onClose, applications }) {
 
             {/* Note on Agent & Block columns */}
             <p className="text-[11px] text-slate-500 mt-2 bg-slate-50 p-2 rounded-lg border border-slate-200">
-              💡 <strong>Official Report Rules</strong>: For single block downloads, the <strong>Agent Name is hidden</strong>, and the <strong>Block column is omitted</strong> in favor of a prominent official heading (e.g. <code>DIGAPAHANDI NEW CARD LIST</code>).
+              💡 <strong>Official Report Rules</strong>: For single block downloads, the <strong>Agent Name is hidden</strong>, and the <strong>Block column is omitted</strong> in favor of a prominent official heading (e.g. <code>[SELECTED BLOCK] [SCHEME] LIST</code>). For All Blocks, the Block column is automatically included.
             </p>
           </div>
 

@@ -3,8 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    background-color: #f8fafc;
+  }
+  html.dark {
+    background-color: #080D1A;
+  }
   body {
-    @apply bg-slate-50 text-slate-800 font-sans;
+    background-color: inherit;
+    @apply text-slate-800 font-sans;
   }
 }
 

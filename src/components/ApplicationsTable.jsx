@@ -301,7 +301,7 @@ export default function ApplicationsTable({
 
               <button
                 onClick={() => {
-                  if (window.confirm(`Mark ${selectedIds.size} applications as COMPLETED? As per rules, they will be removed from the active database and archived.`)) {
+                  if (window.confirm(`Mark ${selectedIds.size} applications as COMPLETED?`)) {
                     onBulkComplete(Array.from(selectedIds));
                     setSelectedIds(new Set());
                   }
@@ -309,7 +309,7 @@ export default function ApplicationsTable({
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs"
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Mark Completed & Delete</span>
+                <span>Mark Completed</span>
               </button>
             </div>
           </div>
@@ -502,7 +502,7 @@ export default function ApplicationsTable({
                         <option value="Query Raised">Query Raised (Q)</option>
                         <option value="Query Replied">Query Replied</option>
                         <option value="Approved">Approved</option>
-                        <option value="Completed">Completed (Delete & Archive)</option>
+                        <option value="Completed">Completed</option>
                         <option value="Bank Reject">Bank Reject</option>
                         <option value="Rejected">Rejected</option>
                       </select>
@@ -521,15 +521,15 @@ export default function ApplicationsTable({
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
 
-                        {/* Complete & Delete Quick Button */}
+                        {/* Complete Quick Button */}
                         <button
                           onClick={() => {
-                            if (window.confirm(`Mark ${app.applicantName} as COMPLETED? It will be deleted from the active list and archived.`)) {
+                            if (window.confirm(`Mark ${app.applicantName} as COMPLETED?`)) {
                               onUpdateStatus(app.id, 'Completed');
                             }
                           }}
                           className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="Mark Completed & Remove"
+                          title="Mark Completed"
                         >
                           <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>

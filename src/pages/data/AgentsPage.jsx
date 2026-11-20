@@ -14,7 +14,8 @@ import {
   Clock,
   HelpCircle,
   Camera,
-  Edit3
+  Edit3,
+  RefreshCw
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { exportApplications } from '../../utils/exportUtils';
@@ -26,13 +27,27 @@ export default function AgentsPage() {
     agents, 
     handleDeleteAgent, 
     handleOpenViewModal, 
-    showToast 
+    showToast,
+    refreshData
   } = useApp();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedAgentId, setSelectedAgentId] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [agentToEdit, setAgentToEdit] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncFromDatabase = async () => {
+    setIsSyncing(true);
+    try {
+      refreshData();
+      showToast('success', 'Syncing live agents from database...');
+    } catch (e) {
+      showToast('error', 'Sync failed: ' + e.message);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 800);
+    }
+  };
 
   // Group applications by agent
   const enrichedAgents = useMemo(() => {
@@ -121,13 +136,25 @@ export default function AgentsPage() {
           </p>
         </div>
 
-        <button
-          onClick={handleOpenCreateModal}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Add Agent</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleSyncFromDatabase}
+            disabled={isSyncing}
+            className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold transition-all border border-slate-300 flex items-center gap-1.5 disabled:opacity-50"
+            title="Sync live agents from Google Sheets database"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 text-slate-600 ${isSyncing ? 'animate-spin text-blue-600' : ''}`} />
+            <span>{isSyncing ? 'Syncing...' : 'Sync Database'}</span>
+          </button>
+
+          <button
+            onClick={handleOpenCreateModal}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Add Agent</span>
+          </button>
+        </div>
       </div>
 
       {/* Main 2-Column Layout */}
