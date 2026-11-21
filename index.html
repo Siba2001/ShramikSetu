@@ -6,50 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ShramikSetu - Odisha Nirman Shramik Application Management Portal</title>
     
-    <!-- Instant Pre-paint Theme Detection: Prevents white flash on refresh -->
-    <script>
-      (function() {
-        try {
-          var p = window.location.pathname;
-          var isDark = p === '/login' || p === '/admin-security';
-          var bg = isDark ? '#080D1A' : '#f8fafc';
-          document.documentElement.style.backgroundColor = bg;
-          if (isDark) {
-            document.documentElement.classList.add('dark');
-            document.documentElement.style.colorScheme = 'dark';
-          } else {
-            document.documentElement.classList.remove('dark');
-            document.documentElement.style.colorScheme = 'light';
-          }
-        } catch (e) {}
-      })();
-    </script>
-    <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        min-height: 100%;
-      }
-      html.dark, html.dark body {
-        background-color: #080D1A !important;
-        color-scheme: dark;
-      }
-    </style>
-
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Oriya+MN&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   </head>
-  <body class="antialiased selection:bg-blue-600 selection:text-white">
-    <script>
-      (function() {
-        try {
-          var p = window.location.pathname;
-          var isDark = p === '/login' || p === '/admin-security';
-          document.body.style.backgroundColor = isDark ? '#080D1A' : '#f8fafc';
-        } catch (e) {}
-      })();
-    </script>
+  <body class="antialiased selection:bg-blue-600 selection:text-white bg-[#F4F7FB] text-slate-800">
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>

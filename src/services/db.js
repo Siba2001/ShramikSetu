@@ -134,9 +134,9 @@ export async function fetchAgentsFromBackend() {
 }
 
 /**
- * Add a new Agent - pushes to Google Sheets database
+ * Add a new Agent - pushes to Google Sheets database in background (instant optimistic response)
  */
-export async function addAgent(agentData) {
+export function addAgent(agentData) {
   const agents = loadAgents();
   const id = `AG-${Date.now()}`;
   const phone = (agentData.mobile || agentData.phone || '').trim();
@@ -157,20 +157,18 @@ export async function addAgent(agentData) {
   agents.unshift(newAgent);
   saveAgents(agents);
 
-  // Sync to Google Sheet backend
-  try {
-    await apiPost('addAgent', newAgent);
-  } catch (err) {
+  // Sync to Google Sheet backend in background without blocking the UI
+  apiPost('addAgent', newAgent).catch(err => {
     console.warn('Backend sync warning for addAgent:', err);
-  }
+  });
 
   return newAgent;
 }
 
 /**
- * Update an existing Agent - pushes to Google Sheets database
+ * Update an existing Agent - pushes to Google Sheets database in background
  */
-export async function updateAgent(id, updates) {
+export function updateAgent(id, updates) {
   const agents = loadAgents();
   const index = agents.findIndex(a => a.id === id);
   if (index === -1) return null;
@@ -194,12 +192,10 @@ export async function updateAgent(id, updates) {
   agents[index] = updatedAgent;
   saveAgents(agents);
 
-  // Sync to Google Sheet backend
-  try {
-    await apiPost('updateAgent', { ...updatedAgent, oldName });
-  } catch (err) {
+  // Sync to Google Sheet backend in background without blocking the UI
+  apiPost('updateAgent', { ...updatedAgent, oldName }).catch(err => {
     console.warn('Backend sync warning for updateAgent:', err);
-  }
+  });
 
   // If agent name changed, update matching applications
   if (oldName && updates.name && oldName.toLowerCase() !== updates.name.trim().toLowerCase()) {
@@ -224,20 +220,18 @@ export async function updateAgent(id, updates) {
 }
 
 /**
- * Delete an Agent - removes from Google Sheets database
+ * Delete an Agent - removes from Google Sheets database in background
  */
-export async function deleteAgent(id) {
+export function deleteAgent(id) {
   const agents = loadAgents();
   const target = agents.find(a => a.id === id || a.name === id);
   const filtered = agents.filter(a => a.id !== id && a.name !== id);
   saveAgents(filtered);
 
-  // Sync to Google Sheet backend
-  try {
-    await apiPost('deleteAgent', { id, name: target ? target.name : id });
-  } catch (err) {
+  // Sync to Google Sheet backend in background without blocking the UI
+  apiPost('deleteAgent', { id, name: target ? target.name : id }).catch(err => {
     console.warn('Backend sync warning for deleteAgent:', err);
-  }
+  });
 
   return filtered;
 }
@@ -282,8 +276,10 @@ export async function addApplication(appData) {
   apps.unshift(newApp);
   saveApplications(apps);
 
-  // Sync with Google Sheet backend
-  apiPost('add', newApp).catch(err => console.warn('Google Sheet sync notice:', err));
+  // Sync with Google Sheet backend in background
+  apiPost('add', newApp).catch(err => {
+    console.warn('Google Sheet sync notice:', err);
+  });
 
   return newApp;
 }
@@ -361,30 +357,47 @@ export async function batchImportApplications(items) {
 }
 
 /**
- * Fetch latest data from Google Sheet Web App
+ * Fetch latest data from Google Sheet Web App with intelligent merging
+ * (Never wipes newly added local records)
  */
 export async function fetchFromGoogleSheet() {
-  // 1. Fetch Active Applications
-  const data = await apiGet('getAll');
-  if (!data || !data.success) {
-    throw new Error((data && data.error) || 'Failed to fetch from Google Sheet');
-  }
-
-  if (Array.isArray(data.data)) {
-    saveApplications(data.data);
-  }
-
-  // 2. Fetch Agents
   try {
-    const agentData = await apiGet('getAgents');
-    if (agentData && agentData.success && Array.isArray(agentData.agents)) {
-      saveAgents(agentData.agents);
+    const data = await apiGet('getAll');
+    if (data && data.success && Array.isArray(data.data)) {
+      const remoteApps = data.data;
+      const localApps = loadApplications();
+
+      // Merge remote with local so un-synced entries are preserved
+      const map = new Map();
+      remoteApps.forEach(app => {
+        if (app && app.id) map.set(app.id, app);
+      });
+      localApps.forEach(app => {
+        if (app && app.id && !map.has(app.id)) {
+          map.set(app.id, app);
+        }
+      });
+
+      const merged = Array.from(map.values());
+      saveApplications(merged);
+
+      // Also sync agents if present
+      try {
+        const agentData = await apiGet('getAgents');
+        if (agentData && agentData.success && Array.isArray(agentData.agents) && agentData.agents.length > 0) {
+          saveAgents(agentData.agents);
+        }
+      } catch (e) {
+        console.warn('Agent sync notice:', e);
+      }
+
+      return merged;
     }
-  } catch (e) {
-    console.warn('Agent sync notice:', e);
+  } catch (err) {
+    console.warn('Backend fetch notice:', err?.message || err);
   }
 
-  return data.data || [];
+  return loadApplications();
 }
 
 /**

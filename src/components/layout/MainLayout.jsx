@@ -11,7 +11,6 @@ import AddAgentModal from '../AddAgentModal';
 import SessionLockModal from '../auth/SessionLockModal';
 import SessionTrackerModal from '../auth/SessionTrackerModal';
 import LogoutConfirmModal from '../auth/LogoutConfirmModal';
-import SessionTimeoutWarningModal from '../auth/SessionTimeoutWarningModal';
 import { useApp } from '../../context/AppContext';
 import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
 
@@ -37,9 +36,6 @@ export default function MainLayout() {
     setIsAddAgentOpen,
     isSessionTrackerOpen,
     setIsSessionTrackerOpen,
-    isSessionWarningOpen,
-    sessionWarningRemaining,
-    handleExtendSession,
     handleLogout,
     refreshData
   } = useApp();
@@ -61,8 +57,8 @@ export default function MainLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans text-slate-800">
-      
+    <div className="min-h-screen bg-[#F4F7FB] flex flex-col font-sans text-slate-800 selection:bg-blue-600 selection:text-white">
+
       {/* Toast Alert */}
       {toast && (
         <div className="fixed top-5 right-5 z-50 animate-bounce-subtle">
@@ -93,13 +89,13 @@ export default function MainLayout() {
         <Navbar pageTitle={getPageTitle()} />
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-7 max-w-7xl w-full mx-auto">
           <Outlet />
         </main>
 
         {/* Footer */}
-        <footer className="bg-white border-t border-slate-200 py-3.5 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div>
+        <footer className="bg-white border-t border-slate-200/80 py-3.5 px-6 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="font-medium text-slate-600">
             ShramikSetu Management System • Beneficiary Operations Portal
           </div>
           <div className="flex items-center gap-3 text-slate-400">
@@ -152,14 +148,6 @@ export default function MainLayout() {
       <SessionTrackerModal
         isOpen={isSessionTrackerOpen}
         onClose={() => setIsSessionTrackerOpen(false)}
-      />
-
-      {/* 1-Hour Session Policy Permission Modal */}
-      <SessionTimeoutWarningModal
-        isOpen={isSessionWarningOpen}
-        remainingSeconds={sessionWarningRemaining}
-        onExtendSession={handleExtendSession}
-        onLogoutNow={() => handleLogout(true)}
       />
 
     </div>

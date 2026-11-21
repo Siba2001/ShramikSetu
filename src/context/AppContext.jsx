@@ -6,6 +6,7 @@ import {
   saveDistricts,
   loadAgents,
   fetchAgentsFromBackend,
+  fetchFromGoogleSheet,
   addAgent as dbAddAgent,
   updateAgent as dbUpdateAgent,
   deleteAgent as dbDeleteAgent,
@@ -20,17 +21,13 @@ import {
   getCurrentUser,
   loginUser,
   logoutUser,
-  extendSession,
   getAuditLogs,
   recordAuditEvent,
   clearAuditLogs,
   lockSessionTerminal,
   unlockSessionTerminal,
   isTerminalLocked as checkIsTerminalLocked,
-  updateSessionLastActive,
-  SESSION_TIMEOUT_MINUTES,
-  SESSION_TIMEOUT_MS,
-  SESSION_WARNING_SECONDS
+  updateSessionLastActive
 } from '../services/auth';
 import { exportApplications } from '../utils/exportUtils';
 import { ALL_BLOCKS } from '../data/locationData';
@@ -45,10 +42,6 @@ export function AppProvider({ children }) {
   const [auditLogs, setAuditLogs] = useState(() => getAuditLogs());
   const [isSessionTrackerOpen, setIsSessionTrackerOpen] = useState(false);
   const [sessionDuration, setSessionDuration] = useState('0m 00s');
-
-  // 1-Hour Session Expiry Warning & Permission Prompt
-  const [isSessionWarningOpen, setIsSessionWarningOpen] = useState(false);
-  const [sessionWarningRemaining, setSessionWarningRemaining] = useState(SESSION_WARNING_SECONDS || 60);
 
   const [applications, setApplications] = useState([]);
   const [districts, setDistricts] = useState([]);
@@ -87,6 +80,7 @@ export function AppProvider({ children }) {
     const res = await loginUser(username, password, remember);
     if (res.success && res.user) {
       setUser(res.user);
+      refreshData();
       showToast('success', `Welcome back, ${res.user.fullName}!`);
     }
     return res;
@@ -136,25 +130,11 @@ export function AppProvider({ children }) {
     showToast('info', 'Audit logs cleared.');
   };
 
-  // Extend session by another 1 hour when user confirms permission
-  const handleExtendSession = () => {
-    const updated = extendSession();
-    if (updated) {
-      setUser({ ...updated });
-    }
-    setIsSessionWarningOpen(false);
-    setSessionWarningRemaining(SESSION_WARNING_SECONDS || 60);
-    showToast('success', 'Session extended for another 1 hour.');
-  };
-
-  // Inactivity & 1-Hour Session Policy Tracker
+  // Inactivity & Session Duration Tracker
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    let lastInteraction = Date.now();
-
     const handleUserActivity = () => {
-      lastInteraction = Date.now();
       updateSessionLastActive();
     };
 
@@ -177,40 +157,19 @@ export function AppProvider({ children }) {
     };
     window.addEventListener('storage', handleStorageChange);
 
-    // Live Clock Interval for internal duration tracking & 1-hour session timeout
+    // Live Clock Interval for internal duration display
     const interval = setInterval(() => {
       if (!user?.loginAt) return;
 
       const now = Date.now();
       const loginTime = new Date(user.loginAt).getTime();
       const diffMs = Math.max(0, now - loginTime);
-      const inactivityMs = Math.max(0, now - lastInteraction);
 
       // Total duration calculation
       const totalSec = Math.floor(diffMs / 1000);
       const mins = Math.floor(totalSec / 60);
       const secs = totalSec % 60;
       setSessionDuration(`${mins}m ${secs < 10 ? '0' : ''}${secs}s`);
-
-      // 1-Hour Limit = 60 minutes = 3,600,000 ms
-      const ONE_HOUR_MS = 60 * 60 * 1000;
-
-      // If active for 1 hour or inactive for 1 hour: trigger the permission modal
-      if (diffMs >= ONE_HOUR_MS || inactivityMs >= ONE_HOUR_MS) {
-        setIsSessionWarningOpen(true);
-
-        setSessionWarningRemaining(prev => {
-          if (prev <= 1) {
-            // If user did not respond, automatically log out
-            logoutUser();
-            setUser(null);
-            setIsSessionWarningOpen(false);
-            showToast('info', 'Session automatically logged out after 1 hour.');
-            return 0;
-          }
-          return prev - 1;
-        });
-      }
     }, 1000);
 
     return () => {
@@ -223,7 +182,7 @@ export function AppProvider({ children }) {
     };
   }, [isAuthenticated, user?.loginAt]);
 
-  // Refresh from storage & sync live agents from Google Sheets database
+  // Refresh from storage & sync live data from Google Sheets database
   const refreshData = () => {
     const apps = loadApplications();
     const dists = loadDistricts();
@@ -232,12 +191,19 @@ export function AppProvider({ children }) {
     setDistricts(dists);
     setAgents(ags);
 
+    // Sync live applications directly from Google Sheets backend
+    fetchFromGoogleSheet().then(liveApps => {
+      if (liveApps && Array.isArray(liveApps)) {
+        setApplications(liveApps);
+      }
+    }).catch(err => console.warn('Background applications sync notice:', err));
+
     // Sync live agents directly from database
     fetchAgentsFromBackend().then(liveAgents => {
       if (liveAgents && Array.isArray(liveAgents)) {
         setAgents(liveAgents);
       }
-    }).catch(err => console.warn('Background agent sync:', err));
+    }).catch(err => console.warn('Background agent sync notice:', err));
   };
 
   useEffect(() => {
@@ -440,16 +406,16 @@ export function AppProvider({ children }) {
     showToast('success', `Block "${blockName}" added.`);
   };
 
-  // Agent Management (100% Database Connected)
-  const handleAddAgent = async (agentData) => {
-    const created = await dbAddAgent(agentData);
+  // Agent Management (100% Database Connected with Instant Optimistic UI)
+  const handleAddAgent = (agentData) => {
+    const created = dbAddAgent(agentData);
     setAgents(loadAgents());
     showToast('success', `Agent "${created.name}" saved to database.`);
     return created;
   };
 
-  const handleUpdateAgent = async (id, updates) => {
-    const updated = await dbUpdateAgent(id, updates);
+  const handleUpdateAgent = (id, updates) => {
+    const updated = dbUpdateAgent(id, updates);
     setAgents(loadAgents());
     if (updated) {
       showToast('success', `Agent "${updated.name}" updated in database.`);
@@ -457,8 +423,8 @@ export function AppProvider({ children }) {
     return updated;
   };
 
-  const handleDeleteAgent = async (id) => {
-    await dbDeleteAgent(id);
+  const handleDeleteAgent = (id) => {
+    dbDeleteAgent(id);
     setAgents(loadAgents());
     showToast('info', 'Agent removed from database.');
   };
@@ -485,10 +451,6 @@ export function AppProvider({ children }) {
         isSessionTrackerOpen,
         setIsSessionTrackerOpen,
         sessionDuration,
-        isSessionWarningOpen,
-        setIsSessionWarningOpen,
-        sessionWarningRemaining,
-        handleExtendSession,
         applications,
         districts,
         agents,

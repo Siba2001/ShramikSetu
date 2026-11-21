@@ -4,28 +4,26 @@
 
 @layer base {
   html {
-    background-color: #f8fafc;
-  }
-  html.dark {
-    background-color: #080D1A;
+    background-color: #F4F7FB;
+    color-scheme: light;
   }
   body {
-    background-color: inherit;
+    background-color: #F4F7FB;
     @apply text-slate-800 font-sans;
   }
 }
 
 /* Custom scrollbars */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 4px;
+  border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
