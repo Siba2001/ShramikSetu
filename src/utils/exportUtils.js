@@ -513,3 +513,252 @@ export function exportApplications(applications, options = {}) {
 
   return { count: filtered.length, filename: finalFilename };
 }
+
+/**
+ * =========================================================================
+ * MARRIAGE VERIFICATION LIST - OFFICIAL PDF & EXCEL EXPORTS
+ * Exact layout matching government verification registers
+ * Title format: "[BLOCK] MARRIAGE VERIFY LIST" (e.g. SANAKHEMUNDI MARRIAGE VERIFY LIST)
+ * =========================================================================
+ */
+
+/**
+ * Generate Marriage Verification List PDF
+ */
+export function exportMarriageVerificationPDF(records, options = {}) {
+  const {
+    block = 'All',
+    search = ''
+  } = options;
+
+  let filtered = [...records];
+  if (block && block !== 'All') {
+    filtered = filtered.filter(r => (r.block || '').toLowerCase() === block.toLowerCase());
+  }
+  if (search && search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(r =>
+      (r.beneficiaryName && r.beneficiaryName.toLowerCase().includes(q)) ||
+      (r.regNo && r.regNo.toLowerCase().includes(q)) ||
+      (r.marriageRegdNo && r.marriageRegdNo.toLowerCase().includes(q)) ||
+      (r.groomName && r.groomName.toLowerCase().includes(q)) ||
+      (r.daughterName && r.daughterName.toLowerCase().includes(q))
+    );
+  }
+
+  const doc = new jsPDF({
+    orientation: 'landscape',
+    unit: 'mm',
+    format: 'a4'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const isSpecificBlock = Boolean(block && block !== 'All');
+  const blockHeader = isSpecificBlock ? block.toUpperCase() : 'ALL BLOCKS';
+  const mainTitle = isSpecificBlock ? `${blockHeader} MARRIAGE VERIFY LIST` : 'MARRIAGE VERIFY LIST';
+
+  // Top Decorative Bar
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, pageWidth, 5, 'F');
+
+  // Official Header
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(15, 23, 42);
+  doc.text(mainTitle, pageWidth / 2, 14, { align: 'center' });
+
+  // Subtitle
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(71, 85, 105);
+  doc.text(
+    "Odisha Building & Other Construction Workers' Welfare Board • Marriage Verification Register",
+    pageWidth / 2,
+    19.5,
+    { align: 'center' }
+  );
+
+  // Meta Info Strip
+  const todayStr = new Date().toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  const metaText = `Block: ${blockHeader}   |   Total Verified Beneficiaries: ${filtered.length}   |   Date Generated: ${todayStr}`;
+  doc.text(metaText, pageWidth / 2, 24.5, { align: 'center' });
+
+  // Line separator
+  doc.setDrawColor(203, 213, 225);
+  doc.setLineWidth(0.3);
+  doc.line(10, 27, pageWidth - 10, 27);
+
+  // Table Headers matching uploaded image exactly:
+  // SL NO | Registration Number | Beneficiary Name | Block | Certifying Authority | Marriage certificate regis Date | Marriage Regd. No | Marriage for | Date of Marriage | Name of Groom | Name of Daughter
+  const tableHeaders = [
+    'SL\nNO',
+    'Registration\nNumber',
+    'Beneficiary\nName',
+    'Block',
+    'Certifying\nAuthority',
+    'Marriage certificate\nregis Date',
+    'Marriage\nRegd. No',
+    'Marriage\nfor',
+    'Date of\nMarriage',
+    'Name of\nGroom',
+    'Name of\nDaughter'
+  ];
+
+  const tableRows = filtered.map((r, index) => {
+    return [
+      r.slNo || index + 1,
+      r.regNo || '—',
+      (r.beneficiaryName || '—').toUpperCase(),
+      (r.block || '—').toUpperCase(),
+      r.certifyingAuthority || '—',
+      r.marriageCertDate || '—',
+      r.marriageRegdNo || '—',
+      r.marriageFor || 'Daughter',
+      r.dateOfMarriage || '—',
+      (r.groomName || '—').toUpperCase(),
+      (r.daughterName || '—').toUpperCase()
+    ];
+  });
+
+  doc.autoTable({
+    head: [tableHeaders],
+    body: tableRows.length > 0 ? tableRows : [['—', 'No marriage verification records found', '—', '—', '—', '—', '—', '—', '—', '—', '—']],
+    startY: 30,
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 2,
+      textColor: [15, 23, 42],
+      lineColor: [203, 213, 225],
+      lineWidth: 0.15,
+      valign: 'middle'
+    },
+    headStyles: {
+      fillColor: [241, 245, 249],
+      textColor: [15, 23, 42],
+      fontStyle: 'bold',
+      fontSize: 7.5,
+      halign: 'center',
+      lineColor: [148, 163, 184],
+      lineWidth: 0.2
+    },
+    alternateRowStyles: {
+      fillColor: [255, 255, 255]
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 12 }, // SL NO
+      1: { cellWidth: 28, fontStyle: 'bold' }, // Regd Number
+      2: { cellWidth: 34, fontStyle: 'bold' }, // Beneficiary Name
+      3: { cellWidth: 24 },                   // Block
+      4: { cellWidth: 28 },                   // Certifying Authority
+      5: { cellWidth: 26, halign: 'center' }, // Regd Date
+      6: { cellWidth: 25, halign: 'center' }, // Regd No
+      7: { cellWidth: 20, halign: 'center' }, // Marriage for
+      8: { cellWidth: 24, halign: 'center' }, // Date of Marriage
+      9: { cellWidth: 28 },                   // Groom Name
+      10: { cellWidth: 'auto' }               // Daughter Name
+    },
+    margin: { left: 10, right: 10 },
+    didDrawPage: (data) => {
+      const pageStr = `Page ${data.pageNumber} of ${doc.internal.getNumberOfPages()}`;
+      doc.setFontSize(7.5);
+      doc.setTextColor(148, 163, 184);
+      doc.text(
+        'ShramikSetu Marriage Verification System • Official Confidential Verification Register',
+        10,
+        pageHeight - 6
+      );
+      doc.text(pageStr, pageWidth - 10, pageHeight - 6, { align: 'right' });
+    }
+  });
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const cleanBlock = isSpecificBlock ? block.replace(/\s+/g, '_').toUpperCase() : 'ALL_BLOCKS';
+  const filename = `${cleanBlock}_MARRIAGE_VERIFY_LIST_${dateStr}.pdf`;
+  doc.save(filename);
+
+  return { count: filtered.length, filename };
+}
+
+/**
+ * Generate Marriage Verification List Excel
+ */
+export function exportMarriageVerificationExcel(records, options = {}) {
+  const {
+    block = 'All',
+    search = ''
+  } = options;
+
+  let filtered = [...records];
+  if (block && block !== 'All') {
+    filtered = filtered.filter(r => (r.block || '').toLowerCase() === block.toLowerCase());
+  }
+  if (search && search.trim()) {
+    const q = search.toLowerCase();
+    filtered = filtered.filter(r =>
+      (r.beneficiaryName && r.beneficiaryName.toLowerCase().includes(q)) ||
+      (r.regNo && r.regNo.toLowerCase().includes(q)) ||
+      (r.marriageRegdNo && r.marriageRegdNo.toLowerCase().includes(q)) ||
+      (r.groomName && r.groomName.toLowerCase().includes(q)) ||
+      (r.daughterName && r.daughterName.toLowerCase().includes(q))
+    );
+  }
+
+  const isSpecificBlock = Boolean(block && block !== 'All');
+  const blockHeader = isSpecificBlock ? block.toUpperCase() : 'ALL BLOCKS';
+  const sheetTitle = isSpecificBlock ? `${blockHeader} Verify` : 'Marriage Verify List';
+
+  // Excel Headers matching uploaded image exactly
+  const exportRows = filtered.map((r, index) => ({
+    'SL NO': r.slNo || index + 1,
+    'Registration Number': sanitizeSpreadsheetValue(r.regNo || ''),
+    'Beneficiary Name': sanitizeSpreadsheetValue(r.beneficiaryName || ''),
+    'Block': sanitizeSpreadsheetValue(r.block || ''),
+    'Certifying Authority': sanitizeSpreadsheetValue(r.certifyingAuthority || ''),
+    'Marriage certificate regis Date': r.marriageCertDate || '',
+    'Marriage Regd. No': sanitizeSpreadsheetValue(r.marriageRegdNo || ''),
+    'Marriage for': r.marriageFor || 'Daughter',
+    'Date of Marriage': r.dateOfMarriage || '',
+    'Name of Groom': sanitizeSpreadsheetValue(r.groomName || ''),
+    'Name of Daughter': sanitizeSpreadsheetValue(r.daughterName || ''),
+    'Mobile Number': sanitizeSpreadsheetValue(r.phone || ''),
+    'Remarks': sanitizeSpreadsheetValue(r.remarks || '')
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(exportRows);
+
+  worksheet['!cols'] = [
+    { wch: 8 },  // SL NO
+    { wch: 22 }, // Registration Number
+    { wch: 26 }, // Beneficiary Name
+    { wch: 18 }, // Block
+    { wch: 22 }, // Certifying Authority
+    { wch: 22 }, // Marriage certificate regis Date
+    { wch: 20 }, // Marriage Regd. No
+    { wch: 15 }, // Marriage for
+    { wch: 18 }, // Date of Marriage
+    { wch: 24 }, // Name of Groom
+    { wch: 24 }, // Name of Daughter
+    { wch: 16 }, // Mobile Number
+    { wch: 22 }  // Remarks
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  const sheetName = `${blockHeader.slice(0, 20)} Verify List`;
+  XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
+
+  const cleanBlock = isSpecificBlock ? block.replace(/\s+/g, '_').toUpperCase() : 'ALL_BLOCKS';
+  const dateStr = new Date().toISOString().slice(0, 10);
+  const filename = `${cleanBlock}_MARRIAGE_VERIFY_LIST_${dateStr}.xlsx`;
+
+  XLSX.writeFile(workbook, filename, { bookType: 'xlsx' });
+
+  return { count: filtered.length, filename };
+}

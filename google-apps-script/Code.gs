@@ -27,6 +27,7 @@ const SHEET_CARD_RENEWAL = "Card_Renewal";
 const SHEET_MATERNITY = "Maternity_Benefit";
 const SHEET_DEATH = "Death_Benefit";
 const SHEET_MARRIAGE = "Marriage_Benefit";
+const SHEET_MARRIAGE_VERIFY = "Marriage_Verify_List";
 const SHEET_EDUCATION = "Education_Assistance";
 const SHEET_USERS = "Users";
 const SHEET_AGENTS = "Agents";
@@ -205,6 +206,7 @@ const HEADERS_BENEFIT = [
   "Agent Name",
   "Remark / Notes",
   "Status",
+  "Phone No",
   "Created At",
   "Updated At"
 ];
@@ -222,6 +224,26 @@ const HEADERS_GENERAL_APPLICATION = [
   "Officer / Remarks",
   "Status",
   "Phone No",
+  "Created At",
+  "Updated At"
+];
+
+const HEADERS_MARRIAGE_VERIFY = [
+  "ID",
+  "SL No",
+  "Registration Number",
+  "Beneficiary Name",
+  "Phone No",
+  "Block",
+  "Certifying Authority",
+  "Marriage certificate regis Date",
+  "Marriage Regd. No",
+  "Marriage for",
+  "Date of Marriage",
+  "Name of Groom",
+  "Name of Daughter",
+  "Remarks",
+  "Status",
   "Created At",
   "Updated At"
 ];
@@ -388,6 +410,38 @@ function doGet(e) {
       const sheet = getOrCreateSheet(SHEET_LOGS, HEADERS_LOGS);
       const logs = getLogsData(sheet);
       return sendJsonResponse({ success: true, count: logs.length, logs: logs });
+    }
+
+    // 6. GET MARRIAGE VERIFICATIONS
+    if (action === "getMarriageVerifications") {
+      const sheet = getOrCreateSheet(SHEET_MARRIAGE_VERIFY, HEADERS_MARRIAGE_VERIFY);
+      const data = sheet.getDataRange().getValues();
+      const records = [];
+      if (data.length > 1) {
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          records.push({
+            id: String(row[0] || ""),
+            slNo: row[1] || i,
+            regNo: String(row[2] || ""),
+            beneficiaryName: String(row[3] || ""),
+            phone: String(row[4] || ""),
+            block: String(row[5] || ""),
+            certifyingAuthority: String(row[6] || ""),
+            marriageCertDate: row[7] ? String(row[7]) : "",
+            marriageRegdNo: String(row[8] || ""),
+            marriageFor: String(row[9] || "Daughter"),
+            dateOfMarriage: row[10] ? String(row[10]) : "",
+            groomName: String(row[11] || ""),
+            daughterName: String(row[12] || ""),
+            remarks: String(row[13] || ""),
+            status: String(row[14] || "Verified"),
+            createdAt: row[15] ? String(row[15]) : "",
+            updatedAt: row[16] ? String(row[16]) : ""
+          });
+        }
+      }
+      return sendJsonResponse({ success: true, count: records.length, records: records });
     }
 
     return sendJsonResponse({ success: false, error: "Invalid action" });
@@ -600,14 +654,17 @@ function doPost(e) {
 
       // B3. DELETE RECORD
       if (action === "delete") {
-        const id = payload.id;
+        const id = String(payload.id || "").trim();
+        const trackNo = String(payload.trackNo || "").trim();
         for (let m = 0; m < MODULE_SHEETS.length; m++) {
           const sheet = getOrCreateModuleSheet(MODULE_SHEETS[m]);
           const data = sheet.getDataRange().getValues();
           for (let i = 1; i < data.length; i++) {
-            if (String(data[i][0]) === String(id)) {
+            const rowId = String(data[i][0] || "").trim();
+            const rowTrack = String(data[i][3] || "").trim();
+            if ((id && rowId === id) || (trackNo && rowTrack === trackNo)) {
               sheet.deleteRow(i + 1);
-              logAuditDirect("APPLICATION_DELETED", "Deleted: " + id, MODULE_SHEETS[m], id, "Success");
+              logAuditDirect("APPLICATION_DELETED", "Deleted: " + (id || trackNo), MODULE_SHEETS[m], id, "Success");
               return sendJsonResponse({ success: true, message: "Record removed from " + MODULE_SHEETS[m] });
             }
           }
@@ -761,6 +818,90 @@ function doPost(e) {
         return sendJsonResponse({ success: false, error: "Agent not found" });
       }
 
+      // ==========================================
+      // D. MARRIAGE VERIFICATION LIST ACTIONS
+      // ==========================================
+      if (action === "addMarriageVerify") {
+        const verifySheet = getOrCreateSheet(SHEET_MARRIAGE_VERIFY, HEADERS_MARRIAGE_VERIFY);
+        const id = payload.id || ("MV-" + new Date().getTime());
+        const slNo = payload.slNo || verifySheet.getLastRow();
+        const row = [
+          id,
+          slNo,
+          sanitizeCell(payload.regNo || payload.cardNo || ""),
+          sanitizeCell(payload.beneficiaryName || payload.applicantName || ""),
+          sanitizeCell(payload.phone || payload.mobile || ""),
+          sanitizeCell(payload.block || ""),
+          sanitizeCell(payload.certifyingAuthority || ""),
+          sanitizeCell(payload.marriageCertDate || ""),
+          sanitizeCell(payload.marriageRegdNo || ""),
+          sanitizeCell(payload.marriageFor || "Daughter"),
+          sanitizeCell(payload.dateOfMarriage || ""),
+          sanitizeCell(payload.groomName || ""),
+          sanitizeCell(payload.daughterName || ""),
+          sanitizeCell(payload.remarks || ""),
+          sanitizeCell(payload.status || "Verified"),
+          payload.createdAt || now,
+          now
+        ];
+        verifySheet.appendRow(row);
+        logAuditDirect("MARRIAGE_VERIFY_ADDED", "Added verify entry for " + (payload.beneficiaryName || ""), "Marriage", id, "Success");
+        return sendJsonResponse({ success: true, id: id });
+      }
+
+      if (action === "updateMarriageVerify") {
+        const verifySheet = getOrCreateSheet(SHEET_MARRIAGE_VERIFY, HEADERS_MARRIAGE_VERIFY);
+        const id = String(payload.id || "").trim();
+        const data = verifySheet.getDataRange().getValues();
+        let foundRow = -1;
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][0]).trim() === id || (payload.regNo && String(data[i][2]).trim() === String(payload.regNo).trim())) {
+            foundRow = i + 1;
+            break;
+          }
+        }
+        if (foundRow === -1) {
+          return sendJsonResponse({ success: false, error: "Record not found" });
+        }
+        const existingRow = data[foundRow - 1];
+        const row = [
+          id,
+          payload.slNo || existingRow[1] || (foundRow - 1),
+          sanitizeCell(payload.regNo || payload.cardNo || existingRow[2] || ""),
+          sanitizeCell(payload.beneficiaryName || payload.applicantName || existingRow[3] || ""),
+          sanitizeCell(payload.phone || payload.mobile || existingRow[4] || ""),
+          sanitizeCell(payload.block || existingRow[5] || ""),
+          sanitizeCell(payload.certifyingAuthority || existingRow[6] || ""),
+          sanitizeCell(payload.marriageCertDate || existingRow[7] || ""),
+          sanitizeCell(payload.marriageRegdNo || existingRow[8] || ""),
+          sanitizeCell(payload.marriageFor || existingRow[9] || "Daughter"),
+          sanitizeCell(payload.dateOfMarriage || existingRow[10] || ""),
+          sanitizeCell(payload.groomName || existingRow[11] || ""),
+          sanitizeCell(payload.daughterName || existingRow[12] || ""),
+          sanitizeCell(payload.remarks || existingRow[13] || ""),
+          sanitizeCell(payload.status || existingRow[14] || "Verified"),
+          existingRow[15] || now,
+          now
+        ];
+        verifySheet.getRange(foundRow, 1, 1, row.length).setValues([row]);
+        logAuditDirect("MARRIAGE_VERIFY_UPDATED", "Updated verify entry: " + id, "Marriage", id, "Success");
+        return sendJsonResponse({ success: true, message: "Record updated" });
+      }
+
+      if (action === "deleteMarriageVerify") {
+        const verifySheet = getOrCreateSheet(SHEET_MARRIAGE_VERIFY, HEADERS_MARRIAGE_VERIFY);
+        const id = String(payload.id || "").trim();
+        const data = verifySheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][0]).trim() === id || (payload.regNo && String(data[i][2]).trim() === String(payload.regNo).trim())) {
+            verifySheet.deleteRow(i + 1);
+            logAuditDirect("MARRIAGE_VERIFY_DELETED", "Deleted verify entry: " + id, "Marriage", id, "Success");
+            return sendJsonResponse({ success: true, message: "Record deleted" });
+          }
+        }
+        return sendJsonResponse({ success: false, error: "Record not found" });
+      }
+
       return sendJsonResponse({ success: false, error: "Unknown action" });
     } catch (err) {
       return sendJsonResponse({ success: false, error: err.toString() });
@@ -817,6 +958,7 @@ function formatApplicationRow(sheetName, id, payload, now) {
       sanitizeCell(payload.agent || ""),
       sanitizeCell(payload.remarks || payload.officer || ""),
       sanitizeCell(payload.status || "Pending"),
+      sanitizeCell(payload.phone || ""),
       payload.createdAt || now,
       now
     ];
@@ -876,6 +1018,15 @@ function getOrCreateSheet(name, headers) {
     });
     if (row1.indexOf("photo") === -1) {
       targetSheet.getRange(1, lastCol + 1).setValue("Photo").setFontWeight("bold").setBackground("#f1f5f9");
+    }
+  } else if (name !== SHEET_LOGS && name !== SHEET_USERS) {
+    // Ensure Phone No column is present in module header rows
+    var lastCol = targetSheet.getLastColumn() || 1;
+    var row1 = targetSheet.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) {
+      return String(h || "").trim().toLowerCase();
+    });
+    if (row1.indexOf("phone no") === -1 && row1.indexOf("phone") === -1 && row1.indexOf("mobile") === -1) {
+      targetSheet.getRange(1, lastCol + 1).setValue("Phone No").setFontWeight("bold").setBackground("#f1f5f9");
     }
   }
   return targetSheet;
@@ -991,9 +1142,9 @@ function parseModuleSheet(sheet, sheetName) {
         agent: String(row[6] || ""),
         remarks: String(row[7] || ""),
         status: String(row[8] || "Pending"),
-        phone: "",
-        createdAt: row[9] ? String(row[9]) : "",
-        updatedAt: row[10] ? String(row[10]) : ""
+        phone: String(row[9] || ""),
+        createdAt: row[10] ? String(row[10]) : "",
+        updatedAt: row[11] ? String(row[11]) : ""
       });
     } else {
       rows.push({

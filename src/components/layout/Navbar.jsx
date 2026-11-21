@@ -67,16 +67,27 @@ export default function Navbar({ pageTitle = 'Executive Operations Dashboard' })
         {/* Desktop Collapse Toggle */}
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className="hidden lg:flex p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+          className="hidden lg:flex p-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
           title="Toggle Sidebar"
         >
           <Menu className="w-5 h-5" />
         </button>
 
-        <div className="flex flex-col">
-          <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight leading-tight">
-            {pageTitle === 'Dashboard & Analytics' ? 'Executive Operations Dashboard' : pageTitle}
-          </h1>
+        <div className="flex items-center gap-3">
+          <img
+            src="/logo.png"
+            alt="ShramikSetu Odisha Nirman Shramik"
+            className="h-10 sm:h-11 w-auto object-contain hidden sm:block"
+          />
+          <div className="h-7 w-[1px] bg-slate-200 hidden lg:block" />
+          <div className="flex flex-col">
+            <h1 className="text-sm sm:text-base font-bold text-slate-900 tracking-tight leading-tight">
+              {pageTitle === 'Dashboard & Analytics' ? 'Executive Operations Dashboard' : pageTitle}
+            </h1>
+            <span className="text-[10px] text-slate-400 font-medium hidden lg:block">
+              Odisha Building & Other Construction Workers' Welfare Board
+            </span>
+          </div>
         </div>
       </div>
 

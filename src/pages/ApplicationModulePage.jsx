@@ -18,10 +18,15 @@ import {
   FileSpreadsheet,
   Phone,
   AlertCircle,
-  Printer
+  Printer,
+  Heart,
+  HeartHandshake,
+  FileText,
+  ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { exportApplications, exportBlockWisePDF, exportBlockWiseExcel } from '../utils/exportUtils';
+import MarriageVerificationSection from '../components/marriage/MarriageVerificationSection';
 
 export default function ApplicationModulePage({ 
   serviceKey, 
@@ -38,8 +43,12 @@ export default function ApplicationModulePage({
     handleOpenViewModal, 
     handleUpdateStatus, 
     handleDeleteApplication,
+    marriageVerifications,
     showToast 
   } = useApp();
+
+  // Special Tab state for Marriage Benefit module
+  const [activeMarriageTab, setActiveMarriageTab] = useState('applications'); // 'applications' | 'verification'
 
   // Filters state
   const [searchTerm, setSearchTerm] = useState('');
@@ -214,53 +223,117 @@ export default function ApplicationModulePage({
   return (
     <div className="space-y-5 animate-fadeIn">
       
-      {/* Module Banner */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-3.5">
-          {Icon && (
-            <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-600 flex items-center justify-center shrink-0">
-              <Icon className="w-6 h-6" />
-            </div>
-          )}
-          <div>
-            <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">{title}</h2>
-            <p className="text-xs text-slate-500 mt-0.5">{description}</p>
+      {/* Marriage Benefit Sub-Tabs Navigation */}
+      {serviceKey === 'Marriage Benefit Apply' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActiveMarriageTab('applications')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMarriageTab === 'applications'
+                  ? 'bg-[#0B1325] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
+            >
+              <FileText className="w-4 h-4 text-blue-400" />
+              <span>Benefit Applications</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                activeMarriageTab === 'applications' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+              }`}>
+                {moduleApplications.length}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveMarriageTab('verification')}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMarriageTab === 'verification'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50/60'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-white" />
+              <span>Marriage Verification List</span>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                activeMarriageTab === 'verification' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
+                {(marriageVerifications || []).length}
+              </span>
+            </button>
+          </div>
+
+          <div className="text-[11px] text-slate-400 hidden sm:block pr-2">
+            {activeMarriageTab === 'verification' 
+              ? 'Official Marriage Verification Register (All Blocks)'
+              : 'Official Construction Worker Marriage Financial Assistance'}
           </div>
         </div>
+      )}
 
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Download Official Block PDF */}
-          <button
-            onClick={handleDownloadBlockPDF}
-            disabled={filteredList.length === 0}
-            className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-xs cursor-pointer"
-            title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} PDF Report`}
-          >
-            <Printer className="w-4 h-4 text-rose-600" />
-            <span>Download PDF</span>
-          </button>
+      {serviceKey === 'Marriage Benefit Apply' && activeMarriageTab === 'verification' ? (
+        <MarriageVerificationSection />
+      ) : (
+        <>
+          {/* Module Banner */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="flex items-center space-x-3.5">
+              {Icon && (
+                <div className="w-12 h-12 rounded-xl bg-blue-50 border border-blue-200/60 text-blue-600 flex items-center justify-center shrink-0">
+                  <Icon className="w-6 h-6" />
+                </div>
+              )}
+              <div>
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight">{title}</h2>
+                <p className="text-xs text-slate-500 mt-0.5">{description}</p>
+              </div>
+            </div>
 
-          {/* Download Official Block Excel */}
-          <button
-            onClick={handleDownloadBlockExcel}
-            disabled={filteredList.length === 0}
-            className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-xs cursor-pointer"
-            title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} Excel Report`}
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Download Excel</span>
-          </button>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {/* Marriage Verification Quick Toggle Button (if inside Marriage Benefit) */}
+              {serviceKey === 'Marriage Benefit Apply' && (
+                <button
+                  onClick={() => setActiveMarriageTab('verification')}
+                  className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  <span>Verify List Register</span>
+                </button>
+              )}
 
-          {/* Add Application Button */}
-          <button
-            onClick={() => handleOpenAddModal(serviceKey)}
-            className="px-4 py-2 rounded-xl bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Add Application</span>
-          </button>
-        </div>
-      </div>
+              {/* Download Official Block PDF */}
+              <button
+                onClick={handleDownloadBlockPDF}
+                disabled={filteredList.length === 0}
+                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-xs cursor-pointer"
+                title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} PDF Report`}
+              >
+                <Printer className="w-4 h-4 text-rose-600" />
+                <span>Download PDF</span>
+              </button>
+
+              {/* Download Official Block Excel */}
+              <button
+                onClick={handleDownloadBlockExcel}
+                disabled={filteredList.length === 0}
+                className="px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-xs font-bold transition-colors flex items-center gap-1.5 disabled:opacity-40 shadow-xs cursor-pointer"
+                title={`Download ${selectedBlock !== 'All' ? selectedBlock : 'Official'} Excel Report`}
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                <span>Download Excel</span>
+              </button>
+
+              {/* Add Application Button */}
+              <button
+                onClick={() => handleOpenAddModal(serviceKey)}
+                className="px-4 py-2 rounded-xl bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 text-white text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Add Application</span>
+              </button>
+            </div>
+          </div>
 
       {/* Module Stats Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -471,14 +544,15 @@ export default function ApplicationModulePage({
                         </span>
                       </td>
 
-                      {/* Name */}
+                      {/* Name & Mobile */}
                       <td className="py-3 px-4 font-bold text-slate-900 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
+                        <div>
                           <span>{app.applicantName || '-'}</span>
                           {app.phone && (
-                            <span title={`Phone: ${app.phone}`} className="text-slate-400">
-                              <Phone className="w-3 h-3 text-emerald-600" />
-                            </span>
+                            <div className="flex items-center gap-1 text-[11px] font-normal text-slate-500 mt-0.5">
+                              <Phone className="w-3 h-3 text-emerald-600 shrink-0" />
+                              <span className="font-mono">{app.phone}</span>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -659,6 +733,8 @@ export default function ApplicationModulePage({
         </div>
 
       </div>
+        </>
+      )}
 
     </div>
   );

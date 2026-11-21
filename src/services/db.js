@@ -21,6 +21,7 @@ export function getGoogleScriptUrl() {
 
 /**
  * Load all active applications from LocalStorage
+ * Automatically filters out any legacy dummy/test records
  */
 export function loadApplications() {
   try {
@@ -29,7 +30,24 @@ export function loadApplications() {
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
       return [];
     }
-    return JSON.parse(raw);
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+
+    // Automatically purge old phantom/dummy records left over from earlier tests
+    const cleaned = list.filter(app => {
+      if (!app) return false;
+      const agentLower = (app.agent || '').trim().toLowerCase();
+      const trackLower = (app.trackNo || '').trim().toLowerCase();
+      // Purge legacy test entry "asdf" or entries with dummy agent names like "litu"
+      if (trackLower === 'asdf' || trackLower === 'test' || trackLower === 'test1234') return false;
+      if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
+      return true;
+    });
+
+    if (cleaned.length !== list.length) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (e) {
     console.error('Failed to load applications from localStorage:', e);
     return [];
@@ -315,10 +333,15 @@ export async function deleteApplication(id) {
   const index = apps.findIndex(a => a.id === id);
   if (index === -1) return false;
 
+  const targetApp = apps[index];
   apps.splice(index, 1);
   saveApplications(apps);
 
-  apiPost('delete', { id }).catch(err => console.warn('Google Sheet delete notice:', err));
+  apiPost('delete', { 
+    id, 
+    trackNo: targetApp?.trackNo, 
+    serviceType: targetApp?.serviceType 
+  }).catch(err => console.warn('Google Sheet delete notice:', err));
 
   return true;
 }
@@ -357,41 +380,50 @@ export async function batchImportApplications(items) {
 }
 
 /**
- * Fetch latest data from Google Sheet Web App with intelligent merging
- * (Never wipes newly added local records)
+ * Fetch latest data from Google Sheet Web App
+ * Real-time synchronization directly from the Google Sheet database
  */
 export async function fetchFromGoogleSheet() {
   try {
     const data = await apiGet('getAll');
     if (data && data.success && Array.isArray(data.data)) {
       const remoteApps = data.data;
-      const localApps = loadApplications();
 
-      // Merge remote with local so un-synced entries are preserved
-      const map = new Map();
-      remoteApps.forEach(app => {
-        if (app && app.id) map.set(app.id, app);
+      // Filter out any stale dummy data if present
+      const validRemote = remoteApps.filter(app => {
+        if (!app) return false;
+        const trackLower = (app.trackNo || '').trim().toLowerCase();
+        const agentLower = (app.agent || '').trim().toLowerCase();
+        if (trackLower === 'asdf' || trackLower === 'test') return false;
+        if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
+        return true;
       });
-      localApps.forEach(app => {
-        if (app && app.id && !map.has(app.id)) {
-          map.set(app.id, app);
+
+      // Preserve only local applications created very recently (< 45s ago) that are currently in-flight
+      const now = Date.now();
+      const inFlightLocal = loadApplications().filter(localApp => {
+        if (!localApp || !localApp.id) return false;
+        if (validRemote.some(r => r.id === localApp.id || (r.trackNo && r.trackNo === localApp.trackNo))) {
+          return false;
         }
+        const ageMs = localApp.createdAt ? (now - new Date(localApp.createdAt).getTime()) : Infinity;
+        return ageMs < 45000;
       });
 
-      const merged = Array.from(map.values());
-      saveApplications(merged);
+      const synced = [...inFlightLocal, ...validRemote];
+      saveApplications(synced);
 
-      // Also sync agents if present
+      // Also sync agents from Google Sheet
       try {
         const agentData = await apiGet('getAgents');
-        if (agentData && agentData.success && Array.isArray(agentData.agents) && agentData.agents.length > 0) {
+        if (agentData && agentData.success && Array.isArray(agentData.agents)) {
           saveAgents(agentData.agents);
         }
       } catch (e) {
         console.warn('Agent sync notice:', e);
       }
 
-      return merged;
+      return synced;
     }
   } catch (err) {
     console.warn('Backend fetch notice:', err?.message || err);
@@ -410,4 +442,132 @@ export async function pushAllToGoogleSheet() {
     throw new Error((result && result.error) || 'Failed to upload to Google Sheet');
   }
   return result;
+}
+
+// ==========================================
+// MARRIAGE VERIFICATION LIST - LOCAL & CLOUD DATABASE
+// ==========================================
+const MARRIAGE_VERIFY_STORAGE_KEY = 'shramik_setu_marriage_verify_v1';
+
+/**
+ * Load all Marriage Verification records
+ */
+export function loadMarriageVerifications() {
+  try {
+    const raw = localStorage.getItem(MARRIAGE_VERIFY_STORAGE_KEY);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    console.error('Failed to load marriage verifications:', e);
+    return [];
+  }
+}
+
+/**
+ * Save Marriage Verification records
+ */
+export function saveMarriageVerifications(records) {
+  try {
+    localStorage.setItem(MARRIAGE_VERIFY_STORAGE_KEY, JSON.stringify(records));
+  } catch (e) {
+    console.error('Failed to save marriage verifications:', e);
+  }
+}
+
+/**
+ * Add a new Marriage Verification record (Instant optimistic write + background sync)
+ */
+export function addMarriageVerification(data) {
+  const records = loadMarriageVerifications();
+  const id = `MV-${Date.now()}`;
+  const now = new Date().toISOString();
+  const slNo = records.length + 1;
+
+  const newRecord = {
+    id,
+    slNo,
+    regNo: (data.regNo || data.cardNo || '').trim(),
+    beneficiaryName: (data.beneficiaryName || data.applicantName || '').toUpperCase().trim(),
+    phone: (data.phone || data.mobile || '').trim(),
+    block: (data.block || 'Sanakhemundi').trim(),
+    certifyingAuthority: (data.certifyingAuthority || '').trim(),
+    marriageCertDate: data.marriageCertDate || '',
+    marriageRegdNo: (data.marriageRegdNo || '').trim(),
+    marriageFor: data.marriageFor || 'Daughter',
+    dateOfMarriage: data.dateOfMarriage || '',
+    groomName: (data.groomName || '').toUpperCase().trim(),
+    daughterName: (data.daughterName || data.brideName || '').toUpperCase().trim(),
+    remarks: (data.remarks || '').trim(),
+    status: data.status || 'Verified',
+    createdAt: now,
+    updatedAt: now
+  };
+
+  records.unshift(newRecord);
+  saveMarriageVerifications(records);
+
+  // Background sync to Google Sheet
+  apiPost('addMarriageVerify', newRecord).catch(err => {
+    console.warn('Backend sync notice for addMarriageVerify:', err);
+  });
+
+  return newRecord;
+}
+
+/**
+ * Update Marriage Verification record
+ */
+export function updateMarriageVerification(id, updates) {
+  const records = loadMarriageVerifications();
+  const index = records.findIndex(r => r.id === id);
+  if (index === -1) return null;
+
+  const now = new Date().toISOString();
+  const updated = {
+    ...records[index],
+    ...updates,
+    updatedAt: now
+  };
+
+  records[index] = updated;
+  saveMarriageVerifications(records);
+
+  apiPost('updateMarriageVerify', updated).catch(err => {
+    console.warn('Backend sync notice for updateMarriageVerify:', err);
+  });
+
+  return updated;
+}
+
+/**
+ * Delete Marriage Verification record
+ */
+export function deleteMarriageVerification(id) {
+  const records = loadMarriageVerifications();
+  const target = records.find(r => r.id === id);
+  const filtered = records.filter(r => r.id !== id);
+  saveMarriageVerifications(filtered);
+
+  apiPost('deleteMarriageVerify', { id, regNo: target?.regNo }).catch(err => {
+    console.warn('Backend sync notice for deleteMarriageVerify:', err);
+  });
+
+  return filtered;
+}
+
+/**
+ * Fetch Marriage Verification records from Google Sheets backend
+ */
+export async function fetchMarriageVerificationsFromBackend() {
+  try {
+    const res = await apiGet('getMarriageVerifications');
+    if (res && res.success && Array.isArray(res.records)) {
+      saveMarriageVerifications(res.records);
+      return res.records;
+    }
+  } catch (e) {
+    console.warn('Notice: Backend fetch for marriage verifications:', e);
+  }
+  return loadMarriageVerifications();
 }

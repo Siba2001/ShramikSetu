@@ -267,48 +267,16 @@ export default function LoginPage() {
         {/* ======================================================== */}
         {/* BRAND LOGO & HEADER (Centered Above Card)                */}
         {/* ======================================================== */}
-        <div className="text-center flex flex-col items-center">
-
-          {/* 3D-layered beveled cobalt blue square icon badge (56px x 56px, rounded-2xl) */}
-          <div className="relative group mb-3">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-800 p-0.5 shadow-[0_12px_28px_-6px_rgba(37,99,235,0.5),inset_0_1px_1px_rgba(255,255,255,0.6)] border border-white/25 flex items-center justify-center transition-transform duration-300 group-hover:scale-105">
-
-              {/* Metallic Light Shimmer Overlay */}
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none" />
-
-              {/* Geometric Vector Mark: Odia temple-arch, hardhat keystone, bridge span */}
-              <svg
-                viewBox="0 0 40 40"
-                className="w-8 h-8 fill-none stroke-white drop-shadow-sm"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                {/* Temple Arch Silhouette Peak */}
-                <path d="M 20 6 L 26 14 L 14 14 Z" fill="white" />
-                <path d="M 14 14 L 14 22 L 26 22 L 26 14" strokeWidth="2" />
-
-                {/* Nirman Hardhat / Keystone Crest */}
-                <path d="M 16 20 C 16 16.5 24 16.5 24 20" strokeWidth="2.4" />
-
-                {/* Suspension Bridge Parabolic Arch ("Setu") */}
-                <path d="M 7 32 Q 20 22 33 32" strokeWidth="2.4" />
-                <line x1="7" y1="32" x2="33" y2="32" strokeWidth="1.8" />
-
-                {/* Bridge Vertical Hangers */}
-                <line x1="14" y1="26.5" x2="14" y2="32" strokeWidth="1.5" />
-                <line x1="20" y1="24.5" x2="20" y2="32" strokeWidth="1.5" />
-                <line x1="26" y1="26.5" x2="26" y2="32" strokeWidth="1.5" />
-              </svg>
-            </div>
+        <div className="text-center flex flex-col items-center mb-2">
+          <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-2xl border border-white/20 max-w-[320px] mb-2 hover:scale-[1.02] transition-transform">
+            <img
+              src="/logo.png"
+              alt="ShramikSetu - Odisha Nirman Shramik"
+              className="w-full h-auto object-contain"
+            />
           </div>
-
-          {/* Wordmark & Subtitle */}
-          <h1 className="text-2xl font-black tracking-tight text-white leading-none">
-            Shramik<span className="text-[#3B82F6]">Setu</span>
-          </h1>
-          <p className="text-xs text-slate-400 font-medium tracking-wide mt-1.5">
-            Odisha Nirman Shramik Management System
+          <p className="text-xs text-slate-400 font-medium tracking-wide">
+            Application & Field Operations Management System
           </p>
         </div>
 

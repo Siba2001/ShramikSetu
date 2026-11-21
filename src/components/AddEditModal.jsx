@@ -149,6 +149,14 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
       }
     }
 
+    // 7. Mobile Number Validation (Required across all modules, exactly 10 digits starting with 6-9)
+    const phoneTrimmed = (formData.phone || '').trim();
+    if (!phoneTrimmed) {
+      err.phone = 'Mobile number is required';
+    } else if (!/^[6-9]\d{9}$/.test(phoneTrimmed)) {
+      err.phone = 'Enter valid 10-digit mobile number (starts with 6, 7, 8, or 9)';
+    }
+
     setErrors(err);
     return Object.keys(err).length === 0;
   };
@@ -297,11 +305,32 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                   )}
                 </div>
 
-                {/* 4. AGENT NAME (Dropdown + Add Agent Button) */}
+                {/* 4. MOBILE NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    4. Mobile Number (10 Digits) *
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Enter 10-digit mobile number"
+                      className={`w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.phone ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                    />
+                  </div>
+                  {errors.phone && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.phone}</span>
+                  )}
+                </div>
+
+                {/* 5. AGENT NAME (Dropdown + Add Agent Button) */}
                 <div>
                   <div className="flex items-center justify-between mb-1">
                     <label className="text-xs font-semibold text-slate-700">
-                      4. Agent Name (Select from Dropdown) *
+                      5. Agent Name (Select from Dropdown) *
                     </label>
                     <button
                       type="button"
@@ -335,7 +364,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                 {/* Block Selector */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    5. Target Block / Municipality *
+                    6. Target Block / Municipality *
                   </label>
                   <input
                     type="text"
@@ -464,6 +493,27 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                     <p className="text-[11px] text-slate-400 mt-1">
                       Agent not listed? Click <strong>+ Add Agent</strong> to register a new field operator.
                     </p>
+                  )}
+                </div>
+
+                {/* 6. MOBILE NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    6. Mobile Number (10 Digits) *
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Enter 10-digit mobile number"
+                      className={`w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.phone ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                    />
+                  </div>
+                  {errors.phone && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.phone}</span>
                   )}
                 </div>
 
@@ -598,6 +648,27 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                   )}
                 </div>
 
+                {/* 7. MOBILE NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    7. Mobile Number (10 Digits) *
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Enter 10-digit mobile number"
+                      className={`w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.phone ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                    />
+                  </div>
+                  {errors.phone && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.phone}</span>
+                  )}
+                </div>
+
               </div>
             ) : isMaternity ? (
               /* MATERNITY BENEFIT SIMPLIFIED FORM (Block, Beneficiary Name, Card No, Track No, Agent, Remark) */
@@ -726,6 +797,27 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                   />
                   {errors.remarks && (
                     <span className="text-xs text-rose-600 mt-1 block">{errors.remarks}</span>
+                  )}
+                </div>
+
+                {/* 7. MOBILE NUMBER */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    7. Mobile Number (10 Digits) *
+                  </label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="tel"
+                      maxLength={10}
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                      placeholder="Enter 10-digit mobile number"
+                      className={`w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 ${errors.phone ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                    />
+                  </div>
+                  {errors.phone && (
+                    <span className="text-xs text-rose-600 mt-1 block">{errors.phone}</span>
                   )}
                 </div>
 
@@ -866,18 +958,38 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                   </div>
                 </div>
 
-                {/* Remarks */}
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Remarks / Scheme Notes
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.remarks}
-                    onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
-                    placeholder="Enter remarks or notes"
-                    className="w-full px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl font-normal text-slate-800 placeholder:text-slate-400"
-                  />
+                {/* Mobile Number & Remarks */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Mobile Number (10 Digits) *
+                    </label>
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <input
+                        type="tel"
+                        maxLength={10}
+                        value={formData.phone}
+                        onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                        placeholder="Enter 10-digit mobile"
+                        className={`w-full pl-9 pr-3.5 py-2 text-xs sm:text-sm bg-white border rounded-xl font-normal text-slate-800 placeholder:text-slate-400 ${errors.phone ? 'border-rose-400 bg-rose-50/20' : 'border-slate-300'}`}
+                      />
+                    </div>
+                    {errors.phone && <span className="text-xs text-rose-600 mt-1 block">{errors.phone}</span>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Remarks / Scheme Notes
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.remarks}
+                      onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                      placeholder="Enter remarks or notes"
+                      className="w-full px-3.5 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-xl font-normal text-slate-800 placeholder:text-slate-400"
+                    />
+                  </div>
                 </div>
 
               </div>

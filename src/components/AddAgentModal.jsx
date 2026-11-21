@@ -79,7 +79,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
     const err = {};
     if (!formData.name.trim()) err.name = 'Agent name is required';
     if (!formData.mobile.trim()) err.mobile = 'Mobile number is required';
-    else if (!/^\d{10}$/.test(formData.mobile.trim())) err.mobile = 'Enter valid 10-digit mobile number';
+    else if (!/^[6-9]\d{9}$/.test(formData.mobile.trim())) err.mobile = 'Enter valid 10-digit mobile number (starts with 6, 7, 8, or 9)';
     if (!formData.village.trim()) err.village = 'Village / Area is required';
     setErrors(err);
     return Object.keys(err).length === 0;

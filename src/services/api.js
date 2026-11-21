@@ -14,6 +14,7 @@ export async function apiGet(action, params = {}) {
   try {
     const url = new URL(GOOGLE_SCRIPT_WEB_APP_URL);
     url.searchParams.set('action', action);
+    url.searchParams.set('_t', String(Date.now())); // Cache buster to ensure real-time fresh fetch without browser caching
     if (API_SECRET) {
       url.searchParams.set('secret', API_SECRET);
     }

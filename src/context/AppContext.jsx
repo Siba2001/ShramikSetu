@@ -15,7 +15,13 @@ import {
   deleteApplication as dbDeleteApplication,
   batchImportApplications as dbBatchImportApplications,
   getGoogleScriptUrl,
-  clearAllData as dbClearAllData
+  clearAllData as dbClearAllData,
+  loadMarriageVerifications,
+  saveMarriageVerifications,
+  addMarriageVerification as dbAddMarriageVerification,
+  updateMarriageVerification as dbUpdateMarriageVerification,
+  deleteMarriageVerification as dbDeleteMarriageVerification,
+  fetchMarriageVerificationsFromBackend
 } from '../services/db';
 import {
   getCurrentUser,
@@ -46,6 +52,7 @@ export function AppProvider({ children }) {
   const [applications, setApplications] = useState([]);
   const [districts, setDistricts] = useState([]);
   const [agents, setAgents] = useState([]);
+  const [marriageVerifications, setMarriageVerifications] = useState(() => loadMarriageVerifications());
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
@@ -187,9 +194,11 @@ export function AppProvider({ children }) {
     const apps = loadApplications();
     const dists = loadDistricts();
     const ags = loadAgents();
+    const mvs = loadMarriageVerifications();
     setApplications(apps);
     setDistricts(dists);
     setAgents(ags);
+    setMarriageVerifications(mvs);
 
     // Sync live applications directly from Google Sheets backend
     fetchFromGoogleSheet().then(liveApps => {
@@ -204,10 +213,42 @@ export function AppProvider({ children }) {
         setAgents(liveAgents);
       }
     }).catch(err => console.warn('Background agent sync notice:', err));
+
+    // Sync marriage verifications directly from database
+    fetchMarriageVerificationsFromBackend().then(liveMvs => {
+      if (liveMvs && Array.isArray(liveMvs)) {
+        setMarriageVerifications(liveMvs);
+      }
+    }).catch(err => console.warn('Background marriage verifications sync notice:', err));
   };
 
   useEffect(() => {
     refreshData();
+
+    // Background live sync interval: keeps data fresh in real-time from Google Sheet
+    const liveSyncTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchFromGoogleSheet().then(liveApps => {
+          if (liveApps && Array.isArray(liveApps)) {
+            setApplications(liveApps);
+          }
+        }).catch(() => {});
+
+        fetchAgentsFromBackend().then(liveAgents => {
+          if (liveAgents && Array.isArray(liveAgents)) {
+            setAgents(liveAgents);
+          }
+        }).catch(() => {});
+
+        fetchMarriageVerificationsFromBackend().then(liveMvs => {
+          if (liveMvs && Array.isArray(liveMvs)) {
+            setMarriageVerifications(liveMvs);
+          }
+        }).catch(() => {});
+      }
+    }, 20000);
+
+    return () => clearInterval(liveSyncTimer);
   }, []);
 
   // Computed Global Stats
@@ -429,6 +470,29 @@ export function AppProvider({ children }) {
     showToast('info', 'Agent removed from database.');
   };
 
+  // Marriage Verification Management
+  const handleAddMarriageVerification = (data) => {
+    const created = dbAddMarriageVerification(data);
+    setMarriageVerifications(loadMarriageVerifications());
+    showToast('success', `Verification entry for "${created.beneficiaryName}" saved.`);
+    return created;
+  };
+
+  const handleUpdateMarriageVerification = (id, updates) => {
+    const updated = dbUpdateMarriageVerification(id, updates);
+    setMarriageVerifications(loadMarriageVerifications());
+    if (updated) {
+      showToast('success', `Verification entry for "${updated.beneficiaryName}" updated.`);
+    }
+    return updated;
+  };
+
+  const handleDeleteMarriageVerification = (id) => {
+    dbDeleteMarriageVerification(id);
+    setMarriageVerifications(loadMarriageVerifications());
+    showToast('info', 'Verification entry deleted.');
+  };
+
   const gasUrl = getGoogleScriptUrl();
 
   return (
@@ -497,6 +561,10 @@ export function AppProvider({ children }) {
         handleAddAgent,
         handleUpdateAgent,
         handleDeleteAgent,
+        marriageVerifications,
+        handleAddMarriageVerification,
+        handleUpdateMarriageVerification,
+        handleDeleteMarriageVerification,
         refreshData
       }}
     >
