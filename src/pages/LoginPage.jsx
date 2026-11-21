@@ -265,35 +265,51 @@ export default function LoginPage() {
       <div className="w-full max-w-[420px] relative z-10 space-y-6">
 
         {/* ======================================================== */}
-        {/* BRAND LOGO & HEADER (Centered Above Card)                */}
+        {/* UNIFIED SIGN-IN CARD (Official Executive Canopy & Logo)  */}
         {/* ======================================================== */}
-        <div className="text-center flex flex-col items-center mb-2">
-          <div className="bg-white rounded-2xl p-3 sm:p-4 shadow-2xl border border-white/20 max-w-[320px] mb-2 hover:scale-[1.02] transition-transform">
-            <img
-              src="/logo.png"
-              alt="ShramikSetu - Odisha Nirman Shramik"
-              className="w-full h-auto object-contain"
-            />
-          </div>
-          <p className="text-xs text-slate-400 font-medium tracking-wide">
-            Application & Field Operations Management System
-          </p>
-        </div>
+        <div className="bg-white rounded-[26px] shadow-[0_30px_70px_-15px_rgba(0,0,0,0.7),0_0_1px_1px_rgba(255,255,255,0.08)] border border-slate-100 text-slate-800 overflow-hidden">
 
-        {/* ======================================================== */}
-        {/* MINIMALIST CARD SURFACE (Pure White, max-w: 420px)       */}
-        {/* ======================================================== */}
-        <div className="bg-white rounded-[20px] p-8 sm:p-9 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.65),0_0_1px_1px_rgba(255,255,255,0.06)] border border-slate-100 text-slate-800">
+          {/* Top Tri-Color / State Identity Stripe */}
+          <div className="h-1.5 bg-gradient-to-r from-[#1E3A8A] via-[#2563EB] via-amber-500 to-[#E65100]" />
 
-          {/* Card Header */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">
-              Sign In
-            </h2>
-            <p className="text-xs text-slate-500 mt-1">
-              Enter your credentials to access the portal
+          {/* Executive Brand Canopy */}
+          <div className="bg-gradient-to-b from-slate-50/90 via-blue-50/20 to-white px-7 pt-7 pb-5 border-b border-slate-100 flex flex-col items-center">
+            
+            {/* Round Official Emblem Part Only */}
+            <div className="w-20 h-20 rounded-2xl bg-white p-2 shadow-[0_10px_25px_-5px_rgba(30,58,138,0.18),0_1px_3px_rgba(0,0,0,0.06)] border border-slate-200/80 flex items-center justify-center">
+              <img
+                src="/emblem.png"
+                alt="ShramikSetu Odisha Nirman Shramik"
+                className="w-full h-full object-contain"
+              />
+            </div>
+
+            {/* Brand Title */}
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none mt-3.5 flex items-center justify-center">
+              SHRAMIK<span className="text-[#E65100]">SETU</span>
+            </h1>
+            <p className="text-xs text-slate-500 font-semibold tracking-wide mt-1">
+              Odisha Nirman Shramik Management System
             </p>
           </div>
+
+          {/* Card Body & Form */}
+          <div className="p-7 sm:p-8 pt-6">
+
+            {/* Card Header */}
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+                  Sign In to Your Account
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Enter authorized credentials to access portal
+                </p>
+              </div>
+              <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold tracking-wider uppercase">
+                Secure
+              </span>
+            </div>
 
           {/* Error Banner */}
           {error && (
@@ -398,6 +414,7 @@ export default function LoginPage() {
 
           </form>
 
+          </div>
         </div>
 
         {/* ======================================================== */}
