@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
+import emblemImg from '../../assets/emblem.png';
 import {
   LayoutDashboard,
   Files,
@@ -79,50 +80,54 @@ export default function Sidebar() {
         `}
       >
         {/* Brand Header */}
-        <div className="h-16 px-3.5 border-b border-[#152347] flex items-center justify-between bg-[#0B1325] shrink-0">
-          <div className="flex items-center space-x-3 overflow-hidden">
-            {/* Circular Official Emblem with sleek glass styling */}
+        <div className={`h-16 border-b border-[#152347] bg-[#0B1325] shrink-0 flex items-center ${sidebarCollapsed ? 'justify-center px-0' : 'px-3 justify-between'}`}>
+
+          {/* Logo + Title row */}
+          <div className={`flex items-center overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'justify-center' : 'space-x-3 flex-1 min-w-0'}`}>
+            {/* Circular Official Emblem */}
             <div 
-              className="w-10 h-10 rounded-xl bg-gradient-to-br from-slate-800 to-slate-900 border border-slate-700/80 p-1 flex items-center justify-center shrink-0 shadow-sm cursor-pointer" 
-              title="ShramikSetu Odisha"
+              className="w-10 h-10 rounded-full bg-white p-0.5 flex items-center justify-center shrink-0 shadow-md cursor-pointer hover:scale-105 transition-transform" 
+              title="ShramikSetu"
               onClick={() => sidebarCollapsed && setSidebarCollapsed(false)}
             >
               <img
-                src="/emblem.png"
-                alt="Odisha Nirman Shramik"
+                src={emblemImg}
+                alt="ShramikSetu"
                 className="w-full h-full object-contain"
               />
             </div>
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <div className="flex items-center">
-                  <span className="font-black text-white text-base tracking-wider uppercase leading-none">
-                    SHRAMIK<span className="text-amber-400 ml-0.5">SETU</span>
-                  </span>
-                </div>
-                <div className="text-[10px] text-sky-400 font-bold uppercase tracking-wider mt-1 truncate">
-                  Odisha Nirman Shramik
-                </div>
-              </div>
-            )}
+            {/* Brand title — fades smoothly on collapse */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                sidebarCollapsed ? 'opacity-0 max-w-0 pointer-events-none' : 'opacity-100 max-w-[160px]'
+              }`}
+            >
+              <span className="font-black text-white text-base tracking-wider uppercase leading-none block whitespace-nowrap">
+                SHRAMIK<span className="text-amber-400 ml-0.5">SETU</span>
+              </span>
+            </div>
           </div>
 
-          {/* Desktop Collapse Arrow < */}
-          <button
-            onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 transition-colors cursor-pointer"
-            title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
-          >
-            {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-          </button>
+          {/* Desktop Collapse Arrow — hidden when collapsed */}
+          {!sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800/60 transition-colors cursor-pointer shrink-0"
+              title="Collapse Sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+          )}
 
-          {/* Mobile Close Button */}
-          <button
-            onClick={closeMobile}
-            className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          {/* Mobile Close Button — only on mobile, only when expanded */}
+          {!sidebarCollapsed && (
+            <button
+              onClick={closeMobile}
+              className="lg:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Scrollable Navigation */}
@@ -130,11 +135,9 @@ export default function Sidebar() {
 
           {/* CORE Section */}
           <div className="space-y-1">
-            {!sidebarCollapsed && (
-              <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                CORE
-              </div>
-            )}
+            <div className={`px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 h-0 mb-0' : 'opacity-100 h-auto'}`}>
+              CORE
+            </div>
 
             {/* Dashboard */}
             <NavLink
@@ -143,9 +146,9 @@ export default function Sidebar() {
               className={getNavLinkClass}
               title="Dashboard"
             >
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 min-w-0">
                 <LayoutDashboard className="w-4 h-4 shrink-0" />
-                {!sidebarCollapsed && <span>Dashboard</span>}
+                <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Dashboard</span>
               </div>
             </NavLink>
           </div>
@@ -169,7 +172,7 @@ export default function Sidebar() {
               <div className="w-full border-t border-slate-800 my-2" />
             )}
 
-            {/* Submenu Links - No live count badges on any module */}
+            {/* Submenu Links */}
             {(appsMenuOpen || sidebarCollapsed) && (
               <div className="space-y-1">
 
@@ -180,9 +183,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="New Card Application"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <FilePlus className="w-4 h-4 shrink-0 text-sky-400" />
-                    {!sidebarCollapsed && <span>New Card Inward</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>New Card Inward</span>
                   </div>
                 </NavLink>
 
@@ -193,9 +196,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="Card Renewal / Contribution"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <CreditCard className="w-4 h-4 shrink-0 text-blue-400" />
-                    {!sidebarCollapsed && <span>Card Renewal</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Card Renewal</span>
                   </div>
                 </NavLink>
 
@@ -206,9 +209,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="Marriage Benefit"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <HeartHandshake className="w-4 h-4 shrink-0 text-rose-400" />
-                    {!sidebarCollapsed && <span>Marriage Benefit</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Marriage Benefit</span>
                   </div>
                 </NavLink>
 
@@ -219,9 +222,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="Maternity Benefit"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <Baby className="w-4 h-4 shrink-0 text-pink-400" />
-                    {!sidebarCollapsed && <span>Maternity Benefit</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Maternity Benefit</span>
                   </div>
                 </NavLink>
 
@@ -232,9 +235,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="Death Benefit"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <Cross className="w-4 h-4 shrink-0 text-slate-400" />
-                    {!sidebarCollapsed && <span>Death Benefit</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Death Benefit</span>
                   </div>
                 </NavLink>
 
@@ -245,9 +248,9 @@ export default function Sidebar() {
                   className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
                   title="Education Assistance"
                 >
-                  <div className="flex items-center space-x-2.5">
+                  <div className="flex items-center space-x-2.5 min-w-0">
                     <GraduationCap className="w-4 h-4 shrink-0 text-emerald-400" />
-                    {!sidebarCollapsed && <span>Education Grant</span>}
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Education Grant</span>
                   </div>
                 </NavLink>
 
@@ -257,11 +260,9 @@ export default function Sidebar() {
 
           {/* MANAGEMENT Section */}
           <div className="space-y-1">
-            {!sidebarCollapsed && (
-              <div className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                MANAGEMENT
-              </div>
-            )}
+            <div className={`px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 h-0 mb-0' : 'opacity-100 h-auto'}`}>
+              MANAGEMENT
+            </div>
 
             {/* Agent Management */}
             <NavLink
@@ -270,16 +271,16 @@ export default function Sidebar() {
               className={getNavLinkClass}
               title="Agent Management"
             >
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-3 min-w-0">
                 <UserCheck className="w-4 h-4 shrink-0 text-amber-400" />
-                {!sidebarCollapsed && <span>Agent Management</span>}
+                <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Agent Management</span>
               </div>
             </NavLink>
           </div>
 
         </div>
 
-        {/* User Profile in Sidebar Footer (Matching Screenshot) */}
+        {/* User Profile in Sidebar Footer */}
         <div className="p-3 border-t border-[#152347] bg-[#080F1E] shrink-0">
           <div className={`flex items-center justify-between ${sidebarCollapsed ? 'flex-col gap-2' : ''}`}>
             <div className="flex items-center space-x-2.5 min-w-0">
@@ -287,16 +288,14 @@ export default function Sidebar() {
               <div className="w-8 h-8 rounded-full bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0 shadow-sm">
                 {(user?.fullName || user?.username || 'System Administrator').slice(0, 1).toUpperCase()}
               </div>
-              {!sidebarCollapsed && (
-                <div className="min-w-0">
-                  <div className="text-xs font-bold text-white truncate max-w-[130px]">
-                    {user?.fullName || user?.username || 'System Administrator'}
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    {user?.role || 'ADMIN'}
-                  </div>
+              <div className={`min-w-0 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[140px]'}`}>
+                <div className="text-xs font-bold text-white truncate">
+                  {user?.fullName || user?.username || 'System Administrator'}
                 </div>
-              )}
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  {user?.role || 'ADMIN'}
+                </div>
+              </div>
             </div>
 
             <button

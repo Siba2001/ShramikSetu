@@ -81,7 +81,7 @@ export default function MainLayout() {
       <Sidebar />
 
       {/* Main Content Area (offset by sidebar width on desktop) */}
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${
+      <div className={`flex-1 flex flex-col transition-all duration-300 ease-in-out ${
         sidebarCollapsed ? 'lg:pl-20' : 'lg:pl-64'
       }`}>
         

@@ -50,7 +50,7 @@ export default function Navbar({ pageTitle = 'Executive Operations Dashboard' })
   }, []);
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200/80 sticky top-0 z-30 flex items-center justify-between px-4 sm:px-6 lg:px-8 shadow-xs">
+    <header className="h-16 bg-white border-b border-slate-200/80 sticky top-0 z-30 flex items-center justify-between pl-2.5 pr-4 sm:pl-3 sm:pr-6 lg:pl-3.5 lg:pr-8 shadow-xs">
       
       {/* Left: Mobile Menu Toggle & Title */}
       <div className="flex items-center space-x-3">

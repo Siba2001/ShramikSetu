@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, Navigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import emblemImg from '../assets/emblem.png';
 import {
   Lock,
   User,
@@ -30,9 +31,6 @@ export default function LoginPage() {
 
   // If already logged in, redirect to dashboard or intended page
   const from = location.state?.from?.pathname || '/dashboard';
-  if (isAuthenticated) {
-    return <Navigate to={from} replace />;
-  }
 
   // Maintain dark canvas on login page and clean slate on portal
   useEffect(() => {
@@ -176,11 +174,11 @@ export default function LoginPage() {
 
     try {
       const res = await handleLogin(username, password, rememberMe);
-      setLoading(false);
 
       if (res.success) {
         navigate(from, { replace: true });
       } else {
+        setLoading(false);
         setError(res.error || 'Invalid credentials. Please verify your login details.');
       }
     } catch (err) {
@@ -188,6 +186,11 @@ export default function LoginPage() {
       setError('Authentication failed. Please verify credentials or backend connection.');
     }
   };
+
+  // If already authenticated, redirect cleanly after all hooks have executed
+  if (isAuthenticated) {
+    return <Navigate to={from} replace />;
+  }
 
   return (
     <div className="min-h-screen bg-[#080D1A] text-slate-100 flex flex-col justify-center items-center py-12 px-4 sm:px-6 relative overflow-hidden font-sans select-none">
@@ -262,54 +265,27 @@ export default function LoginPage() {
       </div>
 
       {/* Main Container */}
-      <div className="w-full max-w-[420px] relative z-10 space-y-6">
+      <div className="w-full max-w-[400px] relative z-10 space-y-5">
 
         {/* ======================================================== */}
-        {/* UNIFIED SIGN-IN CARD (Official Executive Canopy & Logo)  */}
+        {/* MODERN SIGN-IN CARD (Balanced Padding & Layout)          */}
         {/* ======================================================== */}
-        <div className="bg-white rounded-[26px] shadow-[0_30px_70px_-15px_rgba(0,0,0,0.7),0_0_1px_1px_rgba(255,255,255,0.08)] border border-slate-100 text-slate-800 overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-[0_25px_65px_-12px_rgba(0,0,0,0.65),0_0_1px_1px_rgba(255,255,255,0.08)] border border-slate-100 text-slate-800 p-6 sm:p-8">
 
-          {/* Top Tri-Color / State Identity Stripe */}
-          <div className="h-1.5 bg-gradient-to-r from-[#1E3A8A] via-[#2563EB] via-amber-500 to-[#E65100]" />
-
-          {/* Executive Brand Canopy */}
-          <div className="bg-gradient-to-b from-slate-50/90 via-blue-50/20 to-white px-7 pt-7 pb-5 border-b border-slate-100 flex flex-col items-center">
-            
-            {/* Round Official Emblem Part Only */}
-            <div className="w-20 h-20 rounded-2xl bg-white p-2 shadow-[0_10px_25px_-5px_rgba(30,58,138,0.18),0_1px_3px_rgba(0,0,0,0.06)] border border-slate-200/80 flex items-center justify-center">
-              <img
-                src="/emblem.png"
-                alt="ShramikSetu Odisha Nirman Shramik"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            {/* Brand Title */}
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none mt-3.5 flex items-center justify-center">
+          {/* Logo & SHRAMIKSETU Header */}
+          <div className="flex flex-col items-center text-center mb-6">
+            <img
+              src={emblemImg}
+              alt="ShramikSetu Logo"
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain drop-shadow-md mb-3 hover:scale-105 transition-transform duration-300"
+            />
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight leading-none">
               SHRAMIK<span className="text-[#E65100]">SETU</span>
             </h1>
-            <p className="text-xs text-slate-500 font-semibold tracking-wide mt-1">
-              Odisha Nirman Shramik Management System
+            <p className="text-xs text-slate-500 font-medium mt-1.5">
+              Sign in to your account
             </p>
           </div>
-
-          {/* Card Body & Form */}
-          <div className="p-7 sm:p-8 pt-6">
-
-            {/* Card Header */}
-            <div className="mb-5 flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-                  Sign In to Your Account
-                </h2>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  Enter authorized credentials to access portal
-                </p>
-              </div>
-              <span className="px-2.5 py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[10px] font-bold tracking-wider uppercase">
-                Secure
-              </span>
-            </div>
 
           {/* Error Banner */}
           {error && (
@@ -414,7 +390,6 @@ export default function LoginPage() {
 
           </form>
 
-          </div>
         </div>
 
         {/* ======================================================== */}
