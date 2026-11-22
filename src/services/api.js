@@ -3,20 +3,26 @@
  * Handles POST/GET requests, CORS, text/plain payloads, and structured responses.
  */
 
-import { GOOGLE_SCRIPT_WEB_APP_URL, API_SECRET, isBackendConfigured } from '../config/backendConfig';
+import { getActiveGoogleScriptUrl, getActiveApiSecret } from '../config/backendConfig';
 
 /**
  * Perform GET request to Google Apps Script Web App
  */
 export async function apiGet(action, params = {}) {
-  if (!isBackendConfigured) return null;
+  const scriptUrl = getActiveGoogleScriptUrl();
+  const secret = getActiveApiSecret();
+
+  if (!scriptUrl || !scriptUrl.startsWith('http')) {
+    console.warn('[Backend GET Warning]: Google Script URL is not configured.');
+    return null;
+  }
 
   try {
-    const url = new URL(GOOGLE_SCRIPT_WEB_APP_URL);
+    const url = new URL(scriptUrl);
     url.searchParams.set('action', action);
     url.searchParams.set('_t', String(Date.now())); // Cache buster to ensure real-time fresh fetch without browser caching
-    if (API_SECRET) {
-      url.searchParams.set('secret', API_SECRET);
+    if (secret) {
+      url.searchParams.set('secret', secret);
     }
     Object.keys(params).forEach(k => {
       if (params[k] !== undefined && params[k] !== null) {
@@ -48,16 +54,22 @@ export async function apiGet(action, params = {}) {
  * Uses text/plain to avoid CORS preflight issues with Google Apps Script
  */
 export async function apiPost(action, payload = {}) {
-  if (!isBackendConfigured) return null;
+  const scriptUrl = getActiveGoogleScriptUrl();
+  const secret = getActiveApiSecret();
+
+  if (!scriptUrl || !scriptUrl.startsWith('http')) {
+    console.warn('[Backend POST Warning]: Google Script URL is not configured.');
+    return null;
+  }
 
   try {
     const bodyString = JSON.stringify({
       action,
-      secret: API_SECRET,
+      secret,
       payload
     });
 
-    const response = await fetch(GOOGLE_SCRIPT_WEB_APP_URL, {
+    const response = await fetch(scriptUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'

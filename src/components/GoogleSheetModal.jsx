@@ -4,45 +4,64 @@ import {
   Database, 
   CheckCircle2, 
   AlertCircle, 
-  Check, 
   ArrowUpRight, 
   RefreshCw,
-  ShieldCheck,
-  Lock
+  Globe,
+  Save,
+  RotateCcw
 } from 'lucide-react';
 import { 
   fetchFromGoogleSheet, 
-  pushAllToGoogleSheet 
+  pushAllToGoogleSheet,
+  getGoogleScriptUrl,
+  setGoogleScriptUrl
 } from '../services/db';
+import { DEFAULT_PRODUCTION_SCRIPT_URL } from '../config/backendConfig';
+import { useApp } from '../context/AppContext';
 
 export default function GoogleSheetModal({ 
   isOpen, 
   onClose, 
   onSyncComplete 
 }) {
+  const { refreshData } = useApp();
+  const [urlInput, setUrlInput] = useState(() => getGoogleScriptUrl() || DEFAULT_PRODUCTION_SCRIPT_URL);
   const [testing, setTesting] = useState(false);
   const [statusMsg, setStatusMsg] = useState(null);
 
   if (!isOpen) return null;
 
-  const handleSyncNow = async () => {
+  const handleSaveAndSync = async () => {
     setTesting(true);
     setStatusMsg(null);
     try {
+      const cleanUrl = urlInput.trim();
+      setGoogleScriptUrl(cleanUrl);
+
       const apps = await fetchFromGoogleSheet();
+      refreshData();
       setTesting(false);
       setStatusMsg({ 
         type: 'success', 
-        text: `Cloud sync successful! Synced ${apps.length} records across your Google Sheet module databases.` 
+        text: `Successfully synced ${apps.length} applications from your Google Sheet cloud database!` 
       });
       if (onSyncComplete) onSyncComplete();
     } catch (e) {
       setTesting(false);
       setStatusMsg({ 
         type: 'error', 
-        text: `Sync notice: ${e.message}. Please verify Google Sheet deployment.` 
+        text: `Sync error: ${e.message}. Please verify the Web App URL and deployment access.` 
       });
     }
+  };
+
+  const handleResetDefaultUrl = () => {
+    setUrlInput(DEFAULT_PRODUCTION_SCRIPT_URL);
+    setGoogleScriptUrl(DEFAULT_PRODUCTION_SCRIPT_URL);
+    setStatusMsg({
+      type: 'info',
+      text: 'Reset to default official production endpoint.'
+    });
   };
 
   const handlePushAll = async () => {
@@ -60,7 +79,7 @@ export default function GoogleSheetModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn overflow-y-auto">
       <div className="bg-[#0c1429] rounded-2xl max-w-lg w-full border border-slate-700 shadow-2xl my-8 overflow-hidden text-slate-100">
         
         {/* Header */}
@@ -70,8 +89,8 @@ export default function GoogleSheetModal({
               <Database className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white">Google Sheets Cloud Database</h2>
-              <p className="text-xs text-slate-400">Managed Securely in Code Architecture</p>
+              <h2 className="text-base font-bold text-white">Cloud Database Sync</h2>
+              <p className="text-xs text-slate-400">Google Sheets Web App Backend</p>
             </div>
           </div>
           <button 
@@ -85,26 +104,41 @@ export default function GoogleSheetModal({
         {/* Body */}
         <div className="p-6 space-y-4">
           
-          {/* Security Status Card */}
-          <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-700/50 flex items-start gap-3">
-            <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-emerald-300">Cloud Backend Active & Locked</span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-900/50 text-emerald-300 border border-emerald-700/50">
-                  <Lock className="w-2.5 h-2.5" /> Code Protected
-                </span>
-              </div>
-              <p className="text-[11.5px] text-emerald-200/90 mt-1 leading-relaxed">
-                Backend endpoint is hardcoded into the secure service layer. URL inputs are hidden from the UI to prevent unauthorized tampering.
-              </p>
+          {/* Endpoint Input */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-blue-400" />
+                Google Apps Script Web App URL
+              </label>
+              <button
+                type="button"
+                onClick={handleResetDefaultUrl}
+                className="text-[11px] text-amber-400 hover:text-amber-300 hover:underline flex items-center gap-1 cursor-pointer"
+                title="Reset to default official URL"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Reset to Default</span>
+              </button>
             </div>
+            <input
+              type="url"
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              placeholder="https://script.google.com/macros/s/.../exec"
+              className="w-full px-3.5 py-2.5 text-xs bg-[#080D1A] border border-slate-700 rounded-xl text-slate-200 font-mono focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500"
+            />
+            <p className="text-[11px] text-slate-400 mt-1">
+              Connects directly to your Google Spreadsheet via Google Apps Script.
+            </p>
           </div>
 
           {statusMsg && (
             <div className={`p-3 rounded-xl border text-xs flex items-center gap-2 animate-fadeIn ${
               statusMsg.type === 'success' 
                 ? 'bg-emerald-950/40 border-emerald-700/50 text-emerald-300' 
+                : statusMsg.type === 'info'
+                ? 'bg-blue-950/40 border-blue-700/50 text-blue-300'
                 : 'bg-rose-950/40 border-rose-700/50 text-rose-300'
             }`}>
               {statusMsg.type === 'success' ? (
@@ -119,21 +153,21 @@ export default function GoogleSheetModal({
           {/* Quick Action Buttons */}
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button
-              onClick={handleSyncNow}
+              onClick={handleSaveAndSync}
               disabled={testing}
-              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-blue-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${testing ? 'animate-spin' : ''}`} />
-              <span>{testing ? 'Syncing...' : 'Sync Latest from Cloud'}</span>
+              <span>{testing ? 'Syncing...' : 'Sync Now from Cloud'}</span>
             </button>
 
             <button
               onClick={handlePushAll}
               disabled={testing}
-              className="px-4 py-2.5 bg-[#080D1A] hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="px-4 py-2.5 bg-[#080D1A] hover:bg-slate-800 border border-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <ArrowUpRight className="w-3.5 h-3.5 text-blue-400" />
-              <span>Push All Local to Cloud</span>
+              <span>Push Local to Cloud</span>
             </button>
           </div>
 
@@ -144,10 +178,12 @@ export default function GoogleSheetModal({
             </span>
             <div className="flex flex-wrap gap-1.5 text-[10.5px]">
               <span className="px-2 py-0.5 rounded bg-blue-900/40 text-blue-300 border border-blue-700/40 font-medium">New_Card</span>
-              <span className="px-2 py-0.5 rounded bg-blue-900/40 text-blue-300 border border-blue-700/40 font-medium">Card_Renewal</span>
+              <span className="px-2 py-0.5 rounded bg-amber-900/40 text-amber-300 border border-amber-700/40 font-medium">Card_Renewal</span>
               <span className="px-2 py-0.5 rounded bg-pink-900/40 text-pink-300 border border-pink-700/40 font-medium">Maternity_Benefit</span>
+              <span className="px-2 py-0.5 rounded bg-rose-900/40 text-rose-300 border border-rose-700/40 font-medium">Marriage_Benefit</span>
               <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-medium">Death_Benefit</span>
-              <span className="px-2 py-0.5 rounded bg-indigo-900/40 text-indigo-300 border border-indigo-700/40 font-medium">Users</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-900/40 text-emerald-300 border border-emerald-700/40 font-medium">Education_Assistance</span>
+              <span className="px-2 py-0.5 rounded bg-indigo-900/40 text-indigo-300 border border-indigo-700/40 font-medium">Agents</span>
               <span className="px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-700/40 font-medium">Activity_Logs</span>
             </div>
           </div>

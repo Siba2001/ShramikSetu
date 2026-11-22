@@ -1,52 +1,58 @@
 import { INITIAL_DISTRICTS } from '../data/locationData';
-import { GOOGLE_SCRIPT_WEB_APP_URL } from '../config/backendConfig';
+import { getActiveGoogleScriptUrl, saveCustomGoogleScriptUrl } from '../config/backendConfig';
 import { apiGet, apiPost } from './api';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
 const AGENTS_STORAGE_KEY = 'shramik_setu_agents_v1';
 
-// Legacy dummy agent names to auto-purge from localStorage
-const LEGACY_DUMMY_NAMES = [
-  'kalu', 'litu', 'daitari', 'pana', 'dilip', 
-  'krushna', 'babula', 'bidya', 'ranjan dabarasingi', 'niranjan'
-];
-
 /**
- * Get configured Google Apps Script Web App URL from environment
+ * Get configured Google Apps Script Web App URL
  */
 export function getGoogleScriptUrl() {
-  return GOOGLE_SCRIPT_WEB_APP_URL;
+  return getActiveGoogleScriptUrl();
+}
+
+/**
+ * Save custom Google Apps Script Web App URL to localStorage
+ */
+export function setGoogleScriptUrl(url) {
+  saveCustomGoogleScriptUrl(url);
 }
 
 /**
  * Load all active applications from LocalStorage
- * Automatically filters out any legacy dummy/test records
+ * With automatic migration from legacy storage keys
  */
 export function loadApplications() {
   try {
-    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    let raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
+      // Migrate from any legacy storage keys if present
+      const legacyRaw = localStorage.getItem('shramik_setu_applications_v1') || 
+                        localStorage.getItem('shramik_setu_applications') ||
+                        localStorage.getItem('shramiksetu_applications');
+      if (legacyRaw) {
+        raw = legacyRaw;
+        localStorage.setItem(LOCAL_STORAGE_KEY, legacyRaw);
+      }
+    }
+
+    if (!raw) {
       return [];
     }
+
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
 
-    // Automatically purge old phantom/dummy records left over from earlier tests
+    // Filter out only completely blank items or obvious placeholder tracks
     const cleaned = list.filter(app => {
       if (!app) return false;
-      const agentLower = (app.agent || '').trim().toLowerCase();
       const trackLower = (app.trackNo || '').trim().toLowerCase();
-      // Purge legacy test entry "asdf" or entries with dummy agent names like "litu"
       if (trackLower === 'asdf' || trackLower === 'test' || trackLower === 'test1234') return false;
-      if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
       return true;
     });
 
-    if (cleaned.length !== list.length) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleaned));
-    }
     return cleaned;
   } catch (e) {
     console.error('Failed to load applications from localStorage:', e);
@@ -93,7 +99,7 @@ export function saveDistricts(districts) {
 }
 
 /**
- * Load Agents from storage - 100% database driven with zero hardcoded dummy data
+ * Load Agents from storage - 100% database driven
  */
 export function loadAgents() {
   try {
@@ -103,21 +109,7 @@ export function loadAgents() {
     }
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
-
-    // Automatically purge any old hardcoded fake agents left behind from earlier versions
-    const cleaned = list.filter(a => {
-      if (!a || !a.name) return false;
-      const lower = a.name.trim().toLowerCase();
-      if (LEGACY_DUMMY_NAMES.includes(lower) && String(a.id || '').startsWith('ag-')) {
-        return false;
-      }
-      return true;
-    });
-
-    if (cleaned.length !== list.length) {
-      localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(cleaned));
-    }
-    return cleaned;
+    return list.filter(a => a && a.name);
   } catch (e) {
     return [];
   }
@@ -389,14 +381,12 @@ export async function fetchFromGoogleSheet() {
     if (data && data.success && Array.isArray(data.data)) {
       const remoteApps = data.data;
 
-      // Filter out any stale dummy data if present
+      // Accept all valid applications from the remote Google Sheet
       const validRemote = remoteApps.filter(app => {
         if (!app) return false;
         const trackLower = (app.trackNo || '').trim().toLowerCase();
-        const agentLower = (app.agent || '').trim().toLowerCase();
         if (trackLower === 'asdf' || trackLower === 'test') return false;
-        if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
-        return true;
+        return Boolean(app.applicantName || app.trackNo || app.cardNo || app.id);
       });
 
       // Preserve only local applications created very recently (< 45s ago) that are currently in-flight
