@@ -37,11 +37,14 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
 
   const [errors, setErrors] = useState({});
   const [isQuickAddAgentOpen, setIsQuickAddAgentOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (applicationToEdit) {
       setFormData({
-        serviceType: applicationToEdit.serviceType || defaultService,
+        serviceType: applicationToEdit.serviceType || defaultService || 'New Card',
         applicantName: applicationToEdit.applicantName || '',
         cardNo: applicationToEdit.cardNo || '',
         aadhaarNo: applicationToEdit.aadhaarNo || '',
@@ -73,7 +76,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
       });
     }
     setErrors({});
-  }, [applicationToEdit, defaultService, isOpen, allAgentsList]);
+  }, [isOpen, applicationToEdit ? (applicationToEdit.id || applicationToEdit.trackNo) : null]);
 
   if (!isOpen) return null;
 
@@ -161,11 +164,20 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
     return Object.keys(err).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
-    onSave(formData);
-    onClose();
+    try {
+      setSaving(true);
+      const success = await onSave(formData);
+      if (success) {
+        onClose();
+      }
+    } catch (err) {
+      console.error('Save failed:', err);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleAgentCreated = (newAgent) => {
@@ -1006,10 +1018,11 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
               </button>
               <button
                 type="submit"
-                className="px-5 py-2.5 text-xs font-bold text-white bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer"
+                disabled={saving}
+                className="px-5 py-2.5 text-xs font-bold text-white bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 rounded-xl transition-all shadow-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
               >
                 <Save className="w-3.5 h-3.5" />
-                <span>{applicationToEdit ? 'Save Changes' : isNewCard ? 'Register New Card' : isRenewal ? 'Register Card Renewal' : isDeath ? 'Register Death Benefit' : isMaternity ? 'Register Maternity Benefit' : 'Save Application'}</span>
+                <span>{saving ? 'Saving...' : (applicationToEdit ? 'Save Changes' : isNewCard ? 'Register New Card' : isRenewal ? 'Register Card Renewal' : isDeath ? 'Register Death Benefit' : isMaternity ? 'Register Maternity Benefit' : 'Save Application')}</span>
               </button>
             </div>
 

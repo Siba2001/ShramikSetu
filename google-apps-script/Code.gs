@@ -19,7 +19,7 @@
 const SPREADSHEET_ID = "https://docs.google.com/spreadsheets/d/1lIt2pb1SITvEW_ulJJFa0B97_uW_3YWWcmFke6Gphj0/edit?gid=0#gid=0";
 
 // Secure API Secret Token (Configured in .env as VITE_API_SECRET)
-const API_SECRET = "SHRAMIK_SETU_SECURE_2026";
+const API_SECRET = "SHRAMIK_SETU_SEC_5bd2eee42645487098d5ece4a89c8dcaa7debc00a320457f9216ad72528bd635";
 
 // Module Sheet Names
 const SHEET_NEW_CARD = "New_Card";
@@ -287,23 +287,9 @@ const HEADERS_LOGS = [
   "Result"
 ];
 
-// Seed Users with Salted SHA-256 Hashes (Only Admin Account)
-const SEED_USERS = [
-  [
-    "USR-001",
-    "admin",
-    "a1b2c3d4e5f60718",
-    "23465d8030314eb7e2a84a466ff1e4d09814d611060ca4bfba857cb02a32abd0", // Salted SHA-256 of "admin123"
-    "System Administrator",
-    "Super Admin",
-    "All Districts",
-    "All Blocks",
-    "admin@shramiksetu.odisha.gov.in",
-    "Active",
-    new Date().toISOString(),
-    new Date().toISOString()
-  ]
-];
+// Seed Users with Salted SHA-256 Hashes
+// Passwords are NOT hardcoded in code; manage real users and passwords directly in your Google Sheet 'Users' tab
+const SEED_USERS = [];
 
 /**
  * Determine exact sheet tab name for a given application type
@@ -337,10 +323,18 @@ function sanitizeCell(val) {
 function withLock(callback) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(30000); // 30s timeout
+    var hasLock = lock.tryLock(10000); // 10s wait instead of blocking 30s
+    if (!hasLock) {
+      Logger.log("Lock acquisition timeout, continuing...");
+    }
+    return callback();
+  } catch (e) {
+    Logger.log("Lock error: " + e.message);
     return callback();
   } finally {
-    lock.releaseLock();
+    try {
+      lock.releaseLock();
+    } catch (e) {}
   }
 }
 
@@ -361,9 +355,9 @@ function doGet(e) {
     const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getAll";
     const requestedService = (e && e.parameter && e.parameter.service) ? e.parameter.service : null;
 
-    // Verify API secret token if provided
+    // Verify API secret token
     var providedSecret = (e && e.parameter && (e.parameter.secret || e.parameter.token)) ? (e.parameter.secret || e.parameter.token) : "";
-    if (API_SECRET && providedSecret && providedSecret !== API_SECRET) {
+    if (API_SECRET && providedSecret !== API_SECRET) {
       return sendJsonResponse({ success: false, error: "Unauthorized: Invalid API secret token" });
     }
 
@@ -465,9 +459,9 @@ function doPost(e) {
       const payload = postData.payload || {};
       const now = new Date().toISOString();
 
-      // Verify API secret token if provided
+      // Verify API secret token
       var providedSecret = postData.secret || postData.token || "";
-      if (API_SECRET && providedSecret && providedSecret !== API_SECRET) {
+      if (API_SECRET && providedSecret !== API_SECRET) {
         return sendJsonResponse({ success: false, error: "Unauthorized: Invalid API secret token" });
       }
 
@@ -505,11 +499,6 @@ function doPost(e) {
           }
         }
         if (inputHash && storedHash && inputHash === storedHash) {
-          isMatch = true;
-        }
-
-        // Fallback for default admin on initial setup
-        if (!isMatch && username === "admin" && (inputPassword === "admin123" || inputHash === "23465d8030314eb7e2a84a466ff1e4d09814d611060ca4bfba857cb02a32abd0")) {
           isMatch = true;
         }
 

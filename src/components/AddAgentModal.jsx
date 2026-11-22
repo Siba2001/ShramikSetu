@@ -14,8 +14,11 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
 
   const [photoPreview, setPhotoPreview] = useState(null);
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (agentToEdit) {
       setFormData({
         name: agentToEdit.name || '',
@@ -34,7 +37,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
       setPhotoPreview(null);
     }
     setErrors({});
-  }, [agentToEdit, isOpen]);
+  }, [isOpen, agentToEdit ? (agentToEdit.id || agentToEdit.name) : null]);
 
   if (!isOpen) return null;
 
@@ -85,20 +88,27 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
     return Object.keys(err).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
-    if (agentToEdit) {
-      handleUpdateAgent(agentToEdit.id, formData);
-    } else {
-      const created = handleAddAgent(formData);
-      if (onAgentCreated) {
-        onAgentCreated(created);
+    try {
+      setSaving(true);
+      if (agentToEdit) {
+        await handleUpdateAgent(agentToEdit.id, formData);
+      } else {
+        const created = await handleAddAgent(formData);
+        if (onAgentCreated) {
+          onAgentCreated(created);
+        }
       }
+      onClose();
+    } catch (err) {
+      console.error('Agent save error:', err);
+      setErrors(prev => ({ ...prev, submit: err.message || 'Failed to save agent. Please try again.' }));
+    } finally {
+      setSaving(false);
     }
-
-    onClose();
   };
 
   return (
@@ -184,7 +194,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
             <input
               type="text"
               value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
               placeholder="Enter agent name"
               className={`w-full px-3 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white font-normal text-slate-900 placeholder:text-slate-400 transition-all ${
                 errors.name ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'
@@ -204,7 +214,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
                 type="text"
                 maxLength={10}
                 value={formData.mobile}
-                onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
+                onChange={(e) => setFormData(prev => ({ ...prev, mobile: e.target.value.replace(/\D/g, '') }))}
                 placeholder="Enter 10-digit mobile number"
                 className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all ${
                   errors.mobile ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'
@@ -224,7 +234,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
               <input
                 type="text"
                 value={formData.village}
-                onChange={(e) => setFormData({ ...formData, village: e.target.value })}
+                onChange={(e) => setFormData(prev => ({ ...prev, village: e.target.value }))}
                 placeholder="Enter village or locality"
                 className={`w-full pl-9 pr-3 py-2 text-xs sm:text-sm bg-slate-50 border rounded-xl font-normal text-slate-900 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all ${
                   errors.village ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200'
@@ -233,6 +243,13 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
             </div>
             {errors.village && <span className="text-xs text-rose-600 mt-0.5 block">{errors.village}</span>}
           </div>
+
+          {/* Submit Error Display */}
+          {errors.submit && (
+            <div className="text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-2.5">
+              {errors.submit}
+            </div>
+          )}
 
           {/* Footer */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
@@ -245,10 +262,11 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 text-xs font-bold text-white bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer"
+              disabled={saving}
+              className="px-5 py-2.5 text-xs font-bold text-white bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 rounded-xl transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-60"
             >
               <Save className="w-4 h-4" />
-              <span>{agentToEdit ? 'Save Changes' : 'Save Agent'}</span>
+              <span>{saving ? 'Saving...' : (agentToEdit ? 'Save Changes' : 'Save Agent')}</span>
             </button>
           </div>
 

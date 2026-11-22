@@ -1,6 +1,7 @@
 import { INITIAL_DISTRICTS } from '../data/locationData';
 import { getActiveGoogleScriptUrl, saveCustomGoogleScriptUrl } from '../config/backendConfig';
 import { apiGet, apiPost } from './api';
+import { syncDirect } from './syncQueue';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
@@ -134,8 +135,13 @@ export async function fetchAgentsFromBackend() {
   try {
     const res = await apiGet('getAgents');
     if (res && res.success && Array.isArray(res.agents)) {
-      saveAgents(res.agents);
-      return res.agents;
+      // Merge remote agents with any local in-flight agents not yet on remote
+      const remoteIds = new Set(res.agents.map(a => String(a.id || a.name || '').toLowerCase()));
+      const localAgents = loadAgents();
+      const inFlight = localAgents.filter(a => !remoteIds.has(String(a.id || a.name || '').toLowerCase()));
+      const merged = [...inFlight, ...res.agents];
+      saveAgents(merged);
+      return merged;
     }
   } catch (e) {
     console.warn('Notice: Backend fetch for agents:', e);
@@ -144,9 +150,9 @@ export async function fetchAgentsFromBackend() {
 }
 
 /**
- * Add a new Agent - pushes to Google Sheets database in background (instant optimistic response)
+ * Add a new Agent - commits locally for instant UI update and syncs directly to Google Sheets database
  */
-export function addAgent(agentData) {
+export async function addAgent(agentData) {
   const agents = loadAgents();
   const id = `AG-${Date.now()}`;
   const phone = (agentData.mobile || agentData.phone || '').trim();
@@ -164,21 +170,22 @@ export function addAgent(agentData) {
     createdAt: new Date().toISOString()
   };
 
+  // 1. Instantly save to local storage so UI updates immediately without freezing
   agents.unshift(newAgent);
   saveAgents(agents);
 
-  // Sync to Google Sheet backend in background without blocking the UI
-  apiPost('addAgent', newAgent).catch(err => {
-    console.warn('Backend sync warning for addAgent:', err);
+  // 2. Direct synchronization with Google Sheets database (with automatic resilient sync queue)
+  syncDirect('addAgent', newAgent, id, 'agent').catch(err => {
+    console.warn('Google Sheet agent sync notice:', err);
   });
 
   return newAgent;
 }
 
 /**
- * Update an existing Agent - pushes to Google Sheets database in background
+ * Update an existing Agent - commits locally and updates Google Sheets database directly
  */
-export function updateAgent(id, updates) {
+export async function updateAgent(id, updates) {
   const agents = loadAgents();
   const index = agents.findIndex(a => a.id === id);
   if (index === -1) return null;
@@ -199,13 +206,9 @@ export function updateAgent(id, updates) {
     updatedAt: new Date().toISOString()
   };
 
+  // 1. Instantly update local copy
   agents[index] = updatedAgent;
   saveAgents(agents);
-
-  // Sync to Google Sheet backend in background without blocking the UI
-  apiPost('updateAgent', { ...updatedAgent, oldName }).catch(err => {
-    console.warn('Backend sync warning for updateAgent:', err);
-  });
 
   // If agent name changed, update matching applications
   if (oldName && updates.name && oldName.toLowerCase() !== updates.name.trim().toLowerCase()) {
@@ -226,21 +229,27 @@ export function updateAgent(id, updates) {
     }
   }
 
+  // 2. Direct sync to Google Sheets database
+  syncDirect('updateAgent', { ...updatedAgent, oldName }, id, 'agent').catch(err => {
+    console.warn('Google Sheet agent update notice:', err);
+  });
+
   return updatedAgent;
 }
 
 /**
- * Delete an Agent - removes from Google Sheets database in background
+ * Delete an Agent - removes locally and from Google Sheets database directly
  */
-export function deleteAgent(id) {
+export async function deleteAgent(id) {
   const agents = loadAgents();
   const target = agents.find(a => a.id === id || a.name === id);
   const filtered = agents.filter(a => a.id !== id && a.name !== id);
+
   saveAgents(filtered);
 
-  // Sync to Google Sheet backend in background without blocking the UI
-  apiPost('deleteAgent', { id, name: target ? target.name : id }).catch(err => {
-    console.warn('Backend sync warning for deleteAgent:', err);
+  // Direct sync delete to Google Sheets database
+  syncDirect('deleteAgent', { id, name: target ? target.name : id }, id, 'agent').catch(err => {
+    console.warn('Google Sheet agent delete notice:', err);
   });
 
   return filtered;
@@ -258,7 +267,7 @@ export function clearAllData() {
 }
 
 /**
- * Add a new application
+ * Add a new application - commits locally for instant UI update and syncs directly to Google Sheets database
  */
 export async function addApplication(appData) {
   const apps = loadApplications();
@@ -283,19 +292,20 @@ export async function addApplication(appData) {
     updatedAt: now
   };
 
+  // 1. Instantly save to local storage so UI updates smoothly without freezing
   apps.unshift(newApp);
   saveApplications(apps);
 
-  // Sync with Google Sheet backend in background
-  apiPost('add', newApp).catch(err => {
-    console.warn('Google Sheet sync notice:', err);
+  // 2. Direct synchronization with Google Sheet database (with background sync queue guarantee)
+  syncDirect('add', newApp, newApp.id, 'application').catch(err => {
+    console.warn('Google Sheet application sync notice:', err);
   });
 
   return newApp;
 }
 
 /**
- * Update an existing application
+ * Update an existing application - commits locally and directly updates Google Sheets database
  */
 export async function updateApplication(id, updates) {
   const apps = loadApplications();
@@ -309,16 +319,20 @@ export async function updateApplication(id, updates) {
     updatedAt: now
   };
 
+  // 1. Instantly update local copy
   apps[index] = updated;
   saveApplications(apps);
 
-  apiPost('update', updated).catch(err => console.warn('Google Sheet update notice:', err));
+  // 2. Direct synchronization with Google Sheet database
+  syncDirect('update', updated, id, 'application').catch(err => {
+    console.warn('Google Sheet application update notice:', err);
+  });
 
   return { completedAndDeleted: false, record: updated };
 }
 
 /**
- * Delete application explicitly
+ * Delete application explicitly - removes locally and from Google Sheets database directly
  */
 export async function deleteApplication(id) {
   const apps = loadApplications();
@@ -326,14 +340,19 @@ export async function deleteApplication(id) {
   if (index === -1) return false;
 
   const targetApp = apps[index];
+
+  // 1. Instantly remove from local copy
   apps.splice(index, 1);
   saveApplications(apps);
 
-  apiPost('delete', { 
+  // 2. Direct synchronization with Google Sheet database
+  syncDirect('delete', { 
     id, 
     trackNo: targetApp?.trackNo, 
     serviceType: targetApp?.serviceType 
-  }).catch(err => console.warn('Google Sheet delete notice:', err));
+  }, id, 'application').catch(err => {
+    console.warn('Google Sheet application delete notice:', err);
+  });
 
   return true;
 }
@@ -389,15 +408,18 @@ export async function fetchFromGoogleSheet() {
         return Boolean(app.applicantName || app.trackNo || app.cardNo || app.id);
       });
 
-      // Preserve only local applications created very recently (< 45s ago) that are currently in-flight
-      const now = Date.now();
+      // Preserve any local application that is not yet reflected in the Google Sheet (never drop user data)
+      const remoteIds = new Set();
+      validRemote.forEach(r => {
+        if (r.id) remoteIds.add(String(r.id));
+        if (r.trackNo) remoteIds.add(String(r.trackNo).trim().toLowerCase());
+      });
+
       const inFlightLocal = loadApplications().filter(localApp => {
-        if (!localApp || !localApp.id) return false;
-        if (validRemote.some(r => r.id === localApp.id || (r.trackNo && r.trackNo === localApp.trackNo))) {
-          return false;
-        }
-        const ageMs = localApp.createdAt ? (now - new Date(localApp.createdAt).getTime()) : Infinity;
-        return ageMs < 45000;
+        if (!localApp) return false;
+        const matchesId = localApp.id && remoteIds.has(String(localApp.id));
+        const matchesTrack = localApp.trackNo && remoteIds.has(String(localApp.trackNo).trim().toLowerCase());
+        return !matchesId && !matchesTrack;
       });
 
       const synced = [...inFlightLocal, ...validRemote];
@@ -466,9 +488,9 @@ export function saveMarriageVerifications(records) {
 }
 
 /**
- * Add a new Marriage Verification record (Instant optimistic write + background sync)
+ * Add a new Marriage Verification record - commits locally and syncs directly to Google Sheets database
  */
-export function addMarriageVerification(data) {
+export async function addMarriageVerification(data) {
   const records = loadMarriageVerifications();
   const id = `MV-${Date.now()}`;
   const now = new Date().toISOString();
@@ -494,21 +516,22 @@ export function addMarriageVerification(data) {
     updatedAt: now
   };
 
+  // 1. Instantly commit locally
   records.unshift(newRecord);
   saveMarriageVerifications(records);
 
-  // Background sync to Google Sheet
-  apiPost('addMarriageVerify', newRecord).catch(err => {
-    console.warn('Backend sync notice for addMarriageVerify:', err);
+  // 2. Direct sync to Google Sheets database (with resilient sync queue)
+  syncDirect('addMarriageVerify', newRecord, id, 'marriage').catch(err => {
+    console.warn('Google Sheet marriage verification sync notice:', err);
   });
 
   return newRecord;
 }
 
 /**
- * Update Marriage Verification record
+ * Update Marriage Verification record - commits locally and updates Google Sheets database directly
  */
-export function updateMarriageVerification(id, updates) {
+export async function updateMarriageVerification(id, updates) {
   const records = loadMarriageVerifications();
   const index = records.findIndex(r => r.id === id);
   if (index === -1) return null;
@@ -520,27 +543,31 @@ export function updateMarriageVerification(id, updates) {
     updatedAt: now
   };
 
+  // 1. Instantly commit locally
   records[index] = updated;
   saveMarriageVerifications(records);
 
-  apiPost('updateMarriageVerify', updated).catch(err => {
-    console.warn('Backend sync notice for updateMarriageVerify:', err);
+  // 2. Direct sync to Google Sheets database
+  syncDirect('updateMarriageVerify', updated, id, 'marriage').catch(err => {
+    console.warn('Google Sheet marriage update notice:', err);
   });
 
   return updated;
 }
 
 /**
- * Delete Marriage Verification record
+ * Delete Marriage Verification record - removes locally and from Google Sheets database directly
  */
-export function deleteMarriageVerification(id) {
+export async function deleteMarriageVerification(id) {
   const records = loadMarriageVerifications();
   const target = records.find(r => r.id === id);
   const filtered = records.filter(r => r.id !== id);
+
   saveMarriageVerifications(filtered);
 
-  apiPost('deleteMarriageVerify', { id, regNo: target?.regNo }).catch(err => {
-    console.warn('Backend sync notice for deleteMarriageVerify:', err);
+  // Direct sync to Google Sheets database
+  syncDirect('deleteMarriageVerify', { id, regNo: target?.regNo }, id, 'marriage').catch(err => {
+    console.warn('Google Sheet marriage delete notice:', err);
   });
 
   return filtered;
@@ -553,8 +580,13 @@ export async function fetchMarriageVerificationsFromBackend() {
   try {
     const res = await apiGet('getMarriageVerifications');
     if (res && res.success && Array.isArray(res.records)) {
-      saveMarriageVerifications(res.records);
-      return res.records;
+      // Merge remote records with any local records not yet confirmed in the sheet
+      const remoteIds = new Set(res.records.map(r => String(r.id || r.regNo || '').toLowerCase()));
+      const localRecords = loadMarriageVerifications();
+      const inFlight = localRecords.filter(r => !remoteIds.has(String(r.id || r.regNo || '').toLowerCase()));
+      const merged = [...inFlight, ...res.records];
+      saveMarriageVerifications(merged);
+      return merged;
     }
   } catch (e) {
     console.warn('Notice: Backend fetch for marriage verifications:', e);

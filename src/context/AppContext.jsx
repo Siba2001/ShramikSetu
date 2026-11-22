@@ -447,50 +447,80 @@ export function AppProvider({ children }) {
     showToast('success', `Block "${blockName}" added.`);
   };
 
-  // Agent Management (100% Database Connected with Instant Optimistic UI)
-  const handleAddAgent = (agentData) => {
-    const created = dbAddAgent(agentData);
-    setAgents(loadAgents());
-    showToast('success', `Agent "${created.name}" saved to database.`);
-    return created;
-  };
-
-  const handleUpdateAgent = (id, updates) => {
-    const updated = dbUpdateAgent(id, updates);
-    setAgents(loadAgents());
-    if (updated) {
-      showToast('success', `Agent "${updated.name}" updated in database.`);
+  // Agent Management (100% Direct Database Connected)
+  const handleAddAgent = async (agentData) => {
+    try {
+      const created = await dbAddAgent(agentData);
+      setAgents(loadAgents());
+      showToast('success', `Agent "${created.name}" stored in Google Sheets database.`);
+      return created;
+    } catch (e) {
+      showToast('error', `Failed to add agent: ${e.message}`);
+      throw e;
     }
-    return updated;
   };
 
-  const handleDeleteAgent = (id) => {
-    dbDeleteAgent(id);
-    setAgents(loadAgents());
-    showToast('info', 'Agent removed from database.');
-  };
-
-  // Marriage Verification Management
-  const handleAddMarriageVerification = (data) => {
-    const created = dbAddMarriageVerification(data);
-    setMarriageVerifications(loadMarriageVerifications());
-    showToast('success', `Verification entry for "${created.beneficiaryName}" saved.`);
-    return created;
-  };
-
-  const handleUpdateMarriageVerification = (id, updates) => {
-    const updated = dbUpdateMarriageVerification(id, updates);
-    setMarriageVerifications(loadMarriageVerifications());
-    if (updated) {
-      showToast('success', `Verification entry for "${updated.beneficiaryName}" updated.`);
+  const handleUpdateAgent = async (id, updates) => {
+    try {
+      const updated = await dbUpdateAgent(id, updates);
+      setAgents(loadAgents());
+      if (updated) {
+        showToast('success', `Agent "${updated.name}" updated in Google Sheets database.`);
+      }
+      return updated;
+    } catch (e) {
+      showToast('error', `Failed to update agent: ${e.message}`);
+      throw e;
     }
-    return updated;
   };
 
-  const handleDeleteMarriageVerification = (id) => {
-    dbDeleteMarriageVerification(id);
-    setMarriageVerifications(loadMarriageVerifications());
-    showToast('info', 'Verification entry deleted.');
+  const handleDeleteAgent = async (id) => {
+    try {
+      await dbDeleteAgent(id);
+      setAgents(loadAgents());
+      showToast('info', 'Agent deleted from Google Sheets database.');
+    } catch (e) {
+      showToast('error', `Failed to delete agent: ${e.message}`);
+      throw e;
+    }
+  };
+
+  // Marriage Verification Management (100% Direct Database Connected)
+  const handleAddMarriageVerification = async (data) => {
+    try {
+      const created = await dbAddMarriageVerification(data);
+      setMarriageVerifications(loadMarriageVerifications());
+      showToast('success', `Verification for "${created.beneficiaryName}" saved to Google Sheets.`);
+      return created;
+    } catch (e) {
+      showToast('error', `Failed to save verification: ${e.message}`);
+      throw e;
+    }
+  };
+
+  const handleUpdateMarriageVerification = async (id, updates) => {
+    try {
+      const updated = await dbUpdateMarriageVerification(id, updates);
+      setMarriageVerifications(loadMarriageVerifications());
+      if (updated) {
+        showToast('success', `Verification for "${updated.beneficiaryName}" updated in Google Sheets.`);
+      }
+      return updated;
+    } catch (e) {
+      showToast('error', `Failed to update verification: ${e.message}`);
+      throw e;
+    }
+  };
+
+  const handleDeleteMarriageVerification = async (id) => {
+    try {
+      await dbDeleteMarriageVerification(id);
+      setMarriageVerifications(loadMarriageVerifications());
+      showToast('info', 'Verification record deleted from Google Sheets.');
+    } catch (e) {
+      showToast('error', `Failed to delete verification: ${e.message}`);
+      throw e;
+    }
   };
 
   const gasUrl = getGoogleScriptUrl();

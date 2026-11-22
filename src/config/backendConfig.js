@@ -11,7 +11,7 @@
 export const DEFAULT_PRODUCTION_SCRIPT_URL = 
   'https://script.google.com/macros/s/AKfycbxKXlMxwE6DqfOkL8K3nV9mQhPX3xupWxYcyD7gIPLXtiaaQBMulv1k2mUBmhyD2ysN/exec';
 
-export const DEFAULT_API_SECRET = 'SHRAMIK_SETU_SECURE_2026';
+export const DEFAULT_API_SECRET = 'SHRAMIK_SETU_SEC_5bd2eee42645487098d5ece4a89c8dcaa7debc00a320457f9216ad72528bd635';
 
 const GAS_URL_STORAGE_KEY = 'shramiksetu_gas_url';
 

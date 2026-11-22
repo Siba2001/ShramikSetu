@@ -518,24 +518,6 @@ export async function loginUser(username, password, remember = true) {
     }
   }
 
-  // Emergency offline administrative fallback (only if Google Sheets is completely unreachable, identical to DIVY-IMPEX)
-  if (cleanUser === 'admin' && (cleanPass === 'admin123' || cleanPass === 'Admin@123')) {
-    const emergencySession = {
-      username: 'admin',
-      fullName: 'System Administrator (Emergency Offline)',
-      role: ROLES.SUPER_ADMIN,
-      district: 'Odisha State HQ',
-      block: 'All Blocks',
-      email: 'admin@shramiksetu.odisha.gov.in',
-      avatar: 'SA'
-    };
-    const sessionData = establishSession(emergencySession, remember);
-    return {
-      success: true,
-      user: sessionData
-    };
-  }
-
   recordAuditEvent('LOGIN_FAILED', `Failed login attempt for user @${cleanUser}`, 'warning');
   return {
     success: false,

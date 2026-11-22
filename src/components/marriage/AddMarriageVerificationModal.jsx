@@ -32,8 +32,11 @@ export default function AddMarriageVerificationModal({
   });
 
   const [errors, setErrors] = useState({});
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+
     if (recordToEdit) {
       setFormData({
         slNo: recordToEdit.slNo || '',
@@ -70,7 +73,7 @@ export default function AddMarriageVerificationModal({
       });
     }
     setErrors({});
-  }, [recordToEdit, isOpen, defaultBlock, marriageVerifications]);
+  }, [isOpen, recordToEdit ? (recordToEdit.id || recordToEdit.regNo) : null]);
 
   if (!isOpen) return null;
 
@@ -98,7 +101,7 @@ export default function AddMarriageVerificationModal({
     return Object.keys(err).length === 0;
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) return;
 
@@ -113,13 +116,19 @@ export default function AddMarriageVerificationModal({
       mobile: formData.mobile.trim()
     };
 
-    if (recordToEdit) {
-      handleUpdateMarriageVerification(recordToEdit.id, payload);
-    } else {
-      handleAddMarriageVerification(payload);
+    try {
+      setSaving(true);
+      if (recordToEdit) {
+        await handleUpdateMarriageVerification(recordToEdit.id, payload);
+      } else {
+        await handleAddMarriageVerification(payload);
+      }
+      onClose();
+    } catch (err) {
+      console.error('Marriage verification save error:', err);
+    } finally {
+      setSaving(false);
     }
-
-    onClose();
   };
 
   return (
@@ -423,10 +432,11 @@ export default function AddMarriageVerificationModal({
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all cursor-pointer"
+              disabled={saving}
+              className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 hover:bg-blue-700 text-white flex items-center gap-1.5 shadow-md shadow-blue-500/20 transition-all cursor-pointer disabled:opacity-60"
             >
               <Save className="w-3.5 h-3.5" />
-              <span>{recordToEdit ? 'Update Verification Entry' : 'Save Verification Entry'}</span>
+              <span>{saving ? 'Saving...' : (recordToEdit ? 'Update Verification Entry' : 'Save Verification Entry')}</span>
             </button>
           </div>
         </form>

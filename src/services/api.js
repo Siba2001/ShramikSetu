@@ -1,6 +1,6 @@
 /**
  * Centralized API Client for Google Apps Script Web App Backend
- * Handles POST/GET requests, CORS, text/plain payloads, and structured responses.
+ * Handles POST/GET requests, CORS, text/plain payloads, AbortController timeouts, and structured responses.
  */
 
 import { getActiveGoogleScriptUrl, getActiveApiSecret } from '../config/backendConfig';
@@ -8,7 +8,7 @@ import { getActiveGoogleScriptUrl, getActiveApiSecret } from '../config/backendC
 /**
  * Perform GET request to Google Apps Script Web App
  */
-export async function apiGet(action, params = {}) {
+export async function apiGet(action, params = {}, timeoutMs = 12000) {
   const scriptUrl = getActiveGoogleScriptUrl();
   const secret = getActiveApiSecret();
 
@@ -16,6 +16,9 @@ export async function apiGet(action, params = {}) {
     console.warn('[Backend GET Warning]: Google Script URL is not configured.');
     return null;
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const url = new URL(scriptUrl);
@@ -34,18 +37,32 @@ export async function apiGet(action, params = {}) {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
-      }
+      },
+      signal: controller.signal
     });
 
     if (!response.ok) {
       throw new Error(`Server returned HTTP ${response.status}`);
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn(`[Backend GET ${action} JSON parse error]:`, text.slice(0, 200));
+      return null;
+    }
     return data;
   } catch (err) {
-    console.warn(`[Backend GET ${action} Warning]:`, err.message);
+    if (err.name === 'AbortError') {
+      console.warn(`[Backend GET ${action}] Request timed out after ${timeoutMs}ms`);
+    } else {
+      console.warn(`[Backend GET ${action} Warning]:`, err.message);
+    }
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -53,7 +70,7 @@ export async function apiGet(action, params = {}) {
  * Perform POST request to Google Apps Script Web App
  * Uses text/plain to avoid CORS preflight issues with Google Apps Script
  */
-export async function apiPost(action, payload = {}) {
+export async function apiPost(action, payload = {}, timeoutMs = 15000) {
   const scriptUrl = getActiveGoogleScriptUrl();
   const secret = getActiveApiSecret();
 
@@ -61,6 +78,9 @@ export async function apiPost(action, payload = {}) {
     console.warn('[Backend POST Warning]: Google Script URL is not configured.');
     return null;
   }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const bodyString = JSON.stringify({
@@ -74,17 +94,31 @@ export async function apiPost(action, payload = {}) {
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
       },
-      body: bodyString
+      body: bodyString,
+      signal: controller.signal
     });
 
     if (!response.ok) {
       throw new Error(`Server returned HTTP ${response.status}`);
     }
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (parseErr) {
+      console.warn(`[Backend POST ${action} JSON parse error]:`, text.slice(0, 200));
+      return null;
+    }
     return data;
   } catch (err) {
-    console.warn(`[Backend POST ${action} Warning]:`, err.message);
+    if (err.name === 'AbortError') {
+      console.warn(`[Backend POST ${action}] Request timed out after ${timeoutMs}ms`);
+    } else {
+      console.warn(`[Backend POST ${action} Warning]:`, err.message);
+    }
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
