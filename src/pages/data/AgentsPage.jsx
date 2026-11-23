@@ -80,8 +80,8 @@ export default function AgentsPage() {
     const q = searchTerm.toLowerCase();
     return enrichedAgents.filter(a => 
       a.name.toLowerCase().includes(q) ||
-      (a.mobile && a.mobile.includes(q)) ||
-      (a.village && a.village.toLowerCase().includes(q))
+      ((a.mobile || a.phone) && (a.mobile || a.phone).includes(q)) ||
+      ((a.village || a.block) && (a.village || a.block).toLowerCase().includes(q))
     );
   }, [enrichedAgents, searchTerm]);
 
@@ -221,12 +221,12 @@ export default function AgentsPage() {
                         <div className="text-xs font-bold text-slate-900 truncate">{ag.name}</div>
                         <div className="text-[11px] text-slate-500 flex items-center gap-1 font-mono">
                           <Phone className="w-2.5 h-2.5 text-emerald-600" />
-                          <span>{ag.mobile || 'No mobile'}</span>
+                          <span>{ag.mobile || ag.phone || 'No mobile'}</span>
                         </div>
-                        {ag.village && (
+                        {(ag.village || ag.block) && (
                           <div className="text-[10px] text-slate-400 flex items-center gap-1 truncate">
                             <MapPin className="w-2.5 h-2.5 text-rose-500" />
-                            <span>{ag.village}</span>
+                            <span>{ag.village || ag.block}</span>
                           </div>
                         )}
                       </div>
@@ -288,14 +288,14 @@ export default function AgentsPage() {
                       <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1">
                         <span className="flex items-center gap-1 text-slate-700 font-semibold font-mono">
                           <Phone className="w-3.5 h-3.5 text-emerald-600" />
-                          <a href={`tel:${activeAgent.mobile}`} className="hover:underline">
-                            {activeAgent.mobile || 'Not set'}
+                          <a href={`tel:${activeAgent.mobile || activeAgent.phone || ''}`} className="hover:underline">
+                            {activeAgent.mobile || activeAgent.phone || 'Not set'}
                           </a>
                         </span>
                         <span>•</span>
                         <span className="flex items-center gap-1 text-slate-500">
                           <MapPin className="w-3.5 h-3.5 text-rose-500" />
-                          <span>{activeAgent.village || 'Odisha'}</span>
+                          <span>{activeAgent.village || activeAgent.block || activeAgent.district || 'Odisha'}</span>
                         </span>
                       </div>
                     </div>

@@ -77,7 +77,7 @@ export default function Navbar({ pageTitle = 'Executive Operations Dashboard' })
           <img
             src="/logo.png"
             alt="ShramikSetu Odisha Nirman Shramik"
-            className="h-10 sm:h-11 w-auto object-contain hidden sm:block"
+            className="h-9 sm:h-11 w-auto object-contain block shrink-0"
           />
           <div className="h-7 w-[1px] bg-slate-200 hidden lg:block" />
           <div className="flex flex-col">

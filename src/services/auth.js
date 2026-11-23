@@ -460,29 +460,87 @@ export async function loginUser(username, password, remember = true) {
   const cleanPass = (password || '').trim();
 
   if (!cleanUser || !cleanPass) {
-    return {
-      success: false,
-      error: 'Please enter both Username and Password.'
-    };
+    return { success: false, error: 'Please enter both Username and Password.' };
   }
 
   // Clear any legacy lockout artifact from storage
-  try {
-    localStorage.removeItem('shramiksetu_login_attempts_v1');
-  } catch (e) {}
+  try { localStorage.removeItem('shramiksetu_login_attempts_v1'); } catch (e) {}
 
+  // ─────────────────────────────────────────────────────────────────
+  // FAST PATH: Check locally-cached credentials (no network, instant)
+  // This covers users who have logged in before — credentials are
+  // cached with a secure bcrypt-style PBKDF2 hash in localStorage.
+  // ─────────────────────────────────────────────────────────────────
+  const cachedAccounts = getSystemAccounts();
+  const cachedUser = cachedAccounts.find(a => a.username && a.username.toLowerCase() === cleanUser);
+
+  if (cachedUser && cachedUser.passwordHash && cachedUser.salt) {
+    try {
+      const localMatch = await verifyPassword(cleanPass, cachedUser.passwordHash, cachedUser.salt);
+      if (localMatch) {
+        // Local credentials matched — establish session immediately, sync backend in background
+        const sessionData = establishSession({
+          username: cachedUser.username,
+          fullName: cachedUser.fullName || cleanUser,
+          role: cachedUser.role || ROLES.BLOCK_OPERATOR,
+          district: cachedUser.district || 'Odisha State HQ',
+          block: cachedUser.block || 'All Blocks',
+          email: cachedUser.email || '',
+          avatar: cachedUser.avatar || cleanUser.slice(0, 2).toUpperCase(),
+          token: cachedUser.sessionToken || `local_${Date.now()}`,
+          sessionToken: cachedUser.sessionToken || `local_${Date.now()}`
+        }, remember);
+
+        // Refresh session token from backend silently in background (non-blocking)
+        const gasUrl = getGoogleScriptUrl();
+        if (gasUrl) {
+          apiPost('login', { username: cleanUser, password: cleanPass }).then(backendRes => {
+            if (backendRes && backendRes.success && backendRes.user) {
+              const serverToken = backendRes.session ? backendRes.session.token : null;
+              if (serverToken) {
+                establishSession({ ...sessionData, token: serverToken, sessionToken: serverToken }, remember);
+              }
+              // Update cached user profile from backend
+              const idx = cachedAccounts.findIndex(a => a.username.toLowerCase() === cleanUser);
+              const updatedUser = {
+                username: backendRes.user.username || cachedUser.username,
+                fullName: backendRes.user.fullName || backendRes.user.name || cachedUser.fullName,
+                role: backendRes.user.role || cachedUser.role,
+                district: backendRes.user.district || cachedUser.district,
+                block: backendRes.user.block || cachedUser.block,
+                email: backendRes.user.email || cachedUser.email,
+                avatar: backendRes.user.avatar || cachedUser.avatar,
+                passwordHash: cachedUser.passwordHash,
+                salt: cachedUser.salt
+              };
+              if (idx !== -1) cachedAccounts[idx] = { ...cachedAccounts[idx], ...updatedUser };
+              else cachedAccounts.push(updatedUser);
+              saveSystemAccounts(cachedAccounts);
+            }
+          }).catch(() => {});
+        }
+
+        recordAuditEvent('LOGIN_SUCCESS', `Fast local login for @${cleanUser}`, 'success');
+        return { success: true, user: sessionData };
+      }
+      // Local hash exists but password didn't match — wrong password (don't try backend)
+      recordAuditEvent('LOGIN_FAILED', `Wrong password for @${cleanUser}`, 'warning');
+      return { success: false, error: 'Invalid username or password!' };
+    } catch (localErr) {
+      console.warn('[Auth] Local verify error, falling back to backend:', localErr);
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // SLOW PATH: No local cache — authenticate against Google Sheets
+  // (first login or cleared cache; takes 5-30s due to Apps Script)
+  // ─────────────────────────────────────────────────────────────────
   const gasUrl = getGoogleScriptUrl();
-
-  // 1. Authenticate against Google Sheets Backend (DIVY-IMPEX architecture)
   if (gasUrl) {
     try {
-      const backendRes = await apiPost('login', {
-        username: cleanUser,
-        password: cleanPass
-      });
+      const backendRes = await apiPost('login', { username: cleanUser, password: cleanPass });
 
       if (backendRes && backendRes.success && backendRes.user) {
-        // Cache user info in public directory (WITHOUT any password)
         const accounts = getSystemAccounts();
         const existingIdx = accounts.findIndex(a => a.username.toLowerCase() === cleanUser);
         const userObj = {
@@ -495,38 +553,37 @@ export async function loginUser(username, password, remember = true) {
           avatar: backendRes.user.avatar || cleanUser.slice(0, 2).toUpperCase()
         };
 
-        if (existingIdx !== -1) {
-          accounts[existingIdx] = { ...accounts[existingIdx], ...userObj };
-        } else {
-          accounts.push(userObj);
+        // Cache the password hash locally for future fast logins
+        try {
+          const salt = generateSalt(16);
+          const passwordHash = await hashPassword(cleanPass, salt);
+          userObj.passwordHash = passwordHash;
+          userObj.salt = salt;
+        } catch (hashErr) {
+          console.warn('[Auth] Could not cache password hash:', hashErr);
         }
+
+        if (existingIdx !== -1) accounts[existingIdx] = { ...accounts[existingIdx], ...userObj };
+        else accounts.push(userObj);
         saveSystemAccounts(accounts);
 
         const serverToken = backendRes.session ? backendRes.session.token : null;
         const sessionData = establishSession({ ...userObj, token: serverToken, sessionToken: serverToken }, remember);
-        return {
-          success: true,
-          user: sessionData
-        };
+        recordAuditEvent('LOGIN_SUCCESS', `Backend login for @${cleanUser}`, 'success');
+        return { success: true, user: sessionData };
       }
 
       if (backendRes && backendRes.error) {
-        recordAuditEvent('LOGIN_FAILED', `Failed login for user @${cleanUser}: ${backendRes.error}`, 'warning');
-        return {
-          success: false,
-          error: backendRes.error
-        };
+        recordAuditEvent('LOGIN_FAILED', `Failed login for @${cleanUser}: ${backendRes.error}`, 'warning');
+        return { success: false, error: backendRes.error };
       }
     } catch (err) {
       console.warn('[ShramikSetu Auth] Google Sheet login error:', err);
     }
   }
 
-  recordAuditEvent('LOGIN_FAILED', `Failed login attempt for user @${cleanUser}`, 'warning');
-  return {
-    success: false,
-    error: 'Invalid username or password! Please verify credentials in your Google Sheet.'
-  };
+  recordAuditEvent('LOGIN_FAILED', `Failed login attempt for @${cleanUser}`, 'warning');
+  return { success: false, error: 'Invalid username or password! Please verify credentials in your Google Sheet.' };
 }
 
 export function extendSession() {

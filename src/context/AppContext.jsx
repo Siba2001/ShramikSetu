@@ -57,7 +57,14 @@ export function AppProvider({ children }) {
   const [districts, setDistricts] = useState(() => loadDistricts());
   const [agents, setAgents] = useState(() => loadAgents());
   const [marriageVerifications, setMarriageVerifications] = useState(() => loadMarriageVerifications());
-  const [dashboardSummary, setDashboardSummary] = useState(null);
+  const [dashboardSummary, setDashboardSummary] = useState(() => {
+    try {
+      const cached = localStorage.getItem('shramik_setu_dashboard_summary_v1');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(() => syncQueue.getPendingCount());
 
@@ -231,51 +238,54 @@ export function AppProvider({ children }) {
 
   // Refresh from storage & sync live data from Google Sheets database
   const refreshData = useCallback(() => {
-    const apps = loadApplications();
-    const dists = loadDistricts();
-    const ags = loadAgents();
-    const mvs = loadMarriageVerifications();
-    setApplications(apps);
-    setDistricts(dists);
-    setAgents(ags);
-    setMarriageVerifications(mvs);
+    // Step 1: Show local data INSTANTLY (zero network delay)
+    setApplications(loadApplications());
+    setDistricts(loadDistricts());
+    setAgents(loadAgents());
+    setMarriageVerifications(loadMarriageVerifications());
 
-    // Refresh lightweight pre-aggregated dashboard KPIs first
-    refreshDashboardSummary();
+    // Step 2: Fire ALL backend syncs in PARALLEL — do not await each other
+    Promise.allSettled([
+      fetchDashboardSummary(false).then(summary => {
+        if (summary && summary.success) setDashboardSummary(summary);
+      }),
+      fetchAgentsFromBackend().then(liveAgents => {
+        if (liveAgents && Array.isArray(liveAgents)) setAgents(liveAgents);
+      }),
+      fetchFromGoogleSheet().then(liveApps => {
+        if (liveApps && Array.isArray(liveApps) && liveApps.length > 0) setApplications(liveApps);
+      }),
+      fetchMarriageVerificationsFromBackend().then(liveMvs => {
+        if (liveMvs && Array.isArray(liveMvs)) setMarriageVerifications(liveMvs);
+      })
+    ]).catch(() => {});
+  }, []);
 
-    // Sync live agents directly from database
-    fetchAgentsFromBackend().then(liveAgents => {
-      if (liveAgents && Array.isArray(liveAgents)) {
-        setAgents(liveAgents);
-      }
-    }).catch(() => { });
-
-    // Sync marriage verifications directly from database
-    fetchMarriageVerificationsFromBackend().then(liveMvs => {
-      if (liveMvs && Array.isArray(liveMvs)) {
-        setMarriageVerifications(liveMvs);
-      }
-    }).catch(() => { });
-  }, [refreshDashboardSummary]);
-
-  // Intelligent Polling: Only poll lightweight dashboard summary and reference data
+  // Intelligent Polling: Runs all syncs in parallel every 60s when tab is visible
   useEffect(() => {
     refreshData();
 
-    // Background live sync interval (every 60s when visible)
     const liveSyncTimer = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        refreshDashboardSummary();
-        fetchAgentsFromBackend().then(liveAgents => {
-          if (liveAgents && Array.isArray(liveAgents)) {
-            setAgents(liveAgents);
-          }
-        }).catch(() => { });
+        Promise.allSettled([
+          fetchDashboardSummary(false).then(summary => {
+            if (summary && summary.success) setDashboardSummary(summary);
+          }),
+          fetchAgentsFromBackend().then(liveAgents => {
+            if (liveAgents && Array.isArray(liveAgents)) setAgents(liveAgents);
+          }),
+          fetchFromGoogleSheet().then(liveApps => {
+            if (liveApps && Array.isArray(liveApps) && liveApps.length > 0) setApplications(liveApps);
+          }),
+          fetchMarriageVerificationsFromBackend().then(liveMvs => {
+            if (liveMvs && Array.isArray(liveMvs)) setMarriageVerifications(liveMvs);
+          })
+        ]).catch(() => {});
       }
     }, 60000);
 
     return () => clearInterval(liveSyncTimer);
-  }, [refreshData, refreshDashboardSummary]);
+  }, [refreshData]);
 
   // Computed Global Stats (Prioritizes server-side pre-aggregated summary; falls back to local memory)
   const stats = useMemo(() => {

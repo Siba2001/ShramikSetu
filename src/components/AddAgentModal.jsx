@@ -22,8 +22,8 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
     if (agentToEdit) {
       setFormData({
         name: agentToEdit.name || '',
-        mobile: agentToEdit.mobile || '',
-        village: agentToEdit.village || '',
+        mobile: agentToEdit.mobile || agentToEdit.phone || '',
+        village: agentToEdit.village || agentToEdit.block || '',
         photo: agentToEdit.photo || ''
       });
       setPhotoPreview(agentToEdit.photo || null);

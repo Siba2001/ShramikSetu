@@ -44,6 +44,44 @@ export function setGoogleScriptUrl(url) {
 }
 
 /**
+ * Canonical Application Normalizer
+ * Guarantees every application record has identical property aliases
+ * so no component can ever fail with undefined phone, mobile, name, or trackNo.
+ */
+export function normalizeApplication(app) {
+  if (!app) return null;
+  const name = (app.applicantName || app.name || app.beneficiaryName || app.cardHolderName || '').trim();
+  const phone = (app.phone || app.mobile || '').trim();
+  const track = (app.trackNo || app.trackingNo || '').trim();
+  const card = (app.cardNo || app.regNo || app.nirmanCardNo || '').trim();
+  const aadhaar = (app.aadhaarNo || app.aadhaar || '').trim();
+  const village = (app.village || app.block || '').trim();
+
+  return {
+    ...app,
+    id: app.id || `APP-${Date.now()}`,
+    applicantName: name,
+    name: name,
+    cardHolderName: name,
+    beneficiaryName: name,
+    phone: phone,
+    mobile: phone,
+    trackNo: track,
+    trackingNo: track,
+    cardNo: card,
+    regNo: card,
+    aadhaarNo: aadhaar,
+    aadhaar: aadhaar,
+    village: village,
+    block: village,
+    district: app.district || 'Ganjam',
+    agent: (app.agent || '').trim(),
+    status: app.status || 'Pending',
+    serviceType: app.serviceType || 'New Card'
+  };
+}
+
+/**
  * Load all active applications from LocalStorage
  * Automatically filters out any legacy dummy/test records
  */
@@ -65,11 +103,8 @@ export function loadApplications() {
       if (trackLower === 'asdf' || trackLower === 'test' || trackLower === 'test1234') return false;
       if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
       return true;
-    });
+    }).map(normalizeApplication);
 
-    if (cleaned.length !== list.length) {
-      saveApplications(cleaned);
-    }
     return cleaned;
   } catch (e) {
     console.error('Failed to load applications from localStorage:', e);
@@ -82,7 +117,7 @@ export function loadApplications() {
  */
 export function saveApplications(apps) {
   try {
-    const list = Array.isArray(apps) ? apps : [];
+    const list = Array.isArray(apps) ? apps.map(normalizeApplication) : [];
     // Protect localStorage quota (~5MB). If list is massive (e.g. 5,000+), cache the most recent 1,500 records
     const toStore = list.length > 1500 ? list.slice(0, 1500) : list;
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toStore));
@@ -90,7 +125,7 @@ export function saveApplications(apps) {
     console.warn('LocalStorage quota warning - storing compact cache:', e.message);
     try {
       if (Array.isArray(apps)) {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps.slice(0, 500)));
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps.slice(0, 500).map(normalizeApplication)));
       }
     } catch (inner) { }
   }
@@ -142,11 +177,18 @@ export function loadAgents() {
         return false;
       }
       return true;
+    }).map(a => {
+      const ph = (a.mobile || a.phone || '').trim();
+      const vil = (a.village || a.block || '').trim();
+      return {
+        ...a,
+        mobile: ph,
+        phone: ph,
+        village: vil,
+        block: vil
+      };
     });
 
-    if (cleaned.length !== list.length) {
-      localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(cleaned));
-    }
     return cleaned;
   } catch (e) {
     return [];
@@ -158,7 +200,17 @@ export function loadAgents() {
  */
 export function saveAgents(agents) {
   try {
-    const list = Array.isArray(agents) ? agents : [];
+    const list = Array.isArray(agents) ? agents.map(a => {
+      const ph = (a.mobile || a.phone || '').trim();
+      const vil = (a.village || a.block || '').trim();
+      return {
+        ...a,
+        mobile: ph,
+        phone: ph,
+        village: vil,
+        block: vil
+      };
+    }) : [];
     localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(list));
   } catch (e) {
     console.error('Failed to save agents:', e);
@@ -172,8 +224,19 @@ export async function fetchAgentsFromBackend() {
   try {
     const res = await apiGet('getAgents');
     if (res && res.success && Array.isArray(res.agents)) {
-      saveAgents(res.agents);
-      return res.agents;
+      const normalized = res.agents.map(ag => {
+        const ph = (ag.mobile || ag.phone || '').trim();
+        const vil = (ag.village || ag.block || '').trim();
+        return {
+          ...ag,
+          mobile: ph,
+          phone: ph,
+          village: vil,
+          block: vil
+        };
+      });
+      saveAgents(normalized);
+      return normalized;
     }
   } catch (e) {
     console.warn('Notice: Backend fetch for agents:', e);
@@ -552,6 +615,61 @@ export function getCachedPagedApplications(params = {}) {
       }
     }
   } catch (e) {}
+
+  // 3. Instant Local Cache Hydration (0ms) - Ensures clicking any module tab is instantaneous
+  try {
+    const allApps = loadApplications();
+    const service = params.service || 'All';
+    const filtered = allApps.filter(a => {
+      if (!a) return false;
+      if (service !== 'All') {
+        const isRenewal = (service === 'Card Renewal' || service === 'Annual Contribution');
+        if (isRenewal) {
+          if (a.serviceType !== 'Card Renewal' && a.serviceType !== 'Annual Contribution') return false;
+        } else if (a.serviceType !== service) {
+          return false;
+        }
+      }
+      if (params.block && params.block !== 'All' && String(a.block || '').toLowerCase() !== params.block.toLowerCase()) return false;
+      if (params.agent && params.agent !== 'All' && String(a.agent || '').toLowerCase() !== params.agent.toLowerCase()) return false;
+      if (params.status && params.status !== 'All') {
+        const st = String(a.status || '').toLowerCase();
+        const pst = params.status.toLowerCase();
+        if (pst === 'pending' && st !== 'pending' && st !== 'e-sign pending') return false;
+        else if (pst !== 'pending' && st !== pst) return false;
+      }
+      return true;
+    });
+
+    const page = params.page || 1;
+    const pageSize = params.pageSize || 50;
+    const start = (page - 1) * pageSize;
+    const pagedSlice = filtered.slice(start, start + pageSize);
+
+    const pendingCount = filtered.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
+    const inProgressCount = filtered.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
+    const queriesCount = filtered.filter(a => a.status === 'Query Raised').length;
+    const approvedCount = filtered.filter(a => a.status === 'Approved').length;
+
+    const instantData = {
+      success: true,
+      totalRecords: filtered.length,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+      data: pagedSlice,
+      summary: {
+        total: filtered.length,
+        pending: pendingCount,
+        inProgress: inProgressCount,
+        queries: queriesCount,
+        approved: approvedCount
+      }
+    };
+
+    return instantData;
+  } catch (e) {}
+
   return null;
 }
 

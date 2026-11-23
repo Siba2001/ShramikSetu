@@ -7,7 +7,15 @@
  * All authenticated operations use POST body payloads to eliminate URL/log credential leakage.
  */
 
-import { GOOGLE_SCRIPT_WEB_APP_URL, API_SECRET, isBackendConfigured } from '../config/backendConfig';
+import { getActiveGoogleScriptUrl, getActiveApiSecret } from '../config/backendConfig';
+
+// Dynamic per-request resolution — never frozen at module load time
+function getUrl() { return getActiveGoogleScriptUrl(); }
+function getSecret() { return getActiveApiSecret(); }
+function checkConfigured() {
+  const url = getUrl();
+  return Boolean(url && url.startsWith('http'));
+}
 
 /**
  * Retrieve active server session token from authenticated user state
@@ -62,24 +70,23 @@ function recordMetric(action, durationMs, success) {
  * All authenticated read operations are dispatched via POST to avoid URL token exposure.
  */
 export async function apiGet(action, params = {}) {
-  if (!isBackendConfigured) return null;
+  if (!checkConfigured()) return null;
 
-  // If action requires authentication, route via POST body to prevent URL token leakage
+  // All authenticated actions route via POST body to prevent URL token leakage
   if (action !== 'ping') {
     return await apiPost(action, params);
   }
 
   const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+  const scriptUrl = getUrl();
   try {
-    const url = new URL(GOOGLE_SCRIPT_WEB_APP_URL);
+    const url = new URL(scriptUrl);
     url.searchParams.set('action', 'ping');
-    url.searchParams.set('_t', String(Date.now())); // Cache buster
+    url.searchParams.set('_t', String(Date.now()));
 
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      }
+      headers: { 'Accept': 'application/json' }
     });
 
     const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
@@ -100,60 +107,81 @@ export async function apiGet(action, params = {}) {
   }
 }
 
+// In-flight read request deduplication (prevents multiple duplicate calls to Apps Script)
+const inFlightRequests = new Map();
+
 /**
  * Perform POST request to Google Apps Script Web App
  * Uses text/plain to avoid CORS preflight issues with Google Apps Script.
  * Attaches the cryptographic sessionToken securely within the request body payload.
+ * Deduplicates in-flight read operations to minimize network latency.
  */
 export async function apiPost(action, payload = {}) {
-  if (!isBackendConfigured) return null;
-  const sessionToken = (payload && payload.sessionToken) || getActiveSessionToken();
+  if (!checkConfigured()) return null;
 
-  const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
-  try {
-    const bodyString = JSON.stringify({
-      action,
-      secret: API_SECRET,
-      sessionToken: sessionToken || undefined,
-      payload
-    });
+  // Deduplicate identical read actions in flight
+  const isReadAction = ['getAgents', 'getDashboardSummary', 'getAll', 'getMarriageVerifications', 'getApplicationsPaged'].includes(action);
+  const cacheKey = isReadAction ? `${action}::${JSON.stringify(payload)}` : null;
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 12000);
+  if (cacheKey && inFlightRequests.has(cacheKey)) {
+    return inFlightRequests.get(cacheKey);
+  }
 
-    const response = await fetch(GOOGLE_SCRIPT_WEB_APP_URL, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8'
-      },
-      body: bodyString,
-      signal: controller.signal
-    });
-    clearTimeout(timeoutId);
+  const promise = (async () => {
+    const scriptUrl = getUrl();
+    const apiSecret = getSecret();
+    const sessionToken = (payload && payload.sessionToken) || getActiveSessionToken();
 
-    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
+    const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
 
-    if (!response.ok) {
+    try {
+      const bodyString = JSON.stringify({
+        action,
+        secret: apiSecret,
+        sessionToken: sessionToken || undefined,
+        payload
+      });
+
+      const controller = new AbortController();
+      // Single solid 25-second window for Apps Script execution / cold-start
+      const timeoutId = setTimeout(() => controller.abort(), 25000);
+
+      const response = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: bodyString,
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
+
+      if (!response.ok) {
+        recordMetric(action, durationMs, false);
+        throw new Error(`Server returned HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      recordMetric(action, durationMs, true);
+
+      return data;
+    } catch (err) {
+      const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
       recordMetric(action, durationMs, false);
-      throw new Error(`Server returned HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    recordMetric(action, durationMs, true);
-
-    if (data && data.error === 'UNAUTHORIZED') {
-      if (typeof window !== 'undefined' && window.dispatchEvent) {
-        window.dispatchEvent(new CustomEvent('shramiksetu:session_expired', { detail: data }));
+      console.warn(`[Backend POST ${action} Notice - ${durationMs}ms]:`, err.message);
+      return null;
+    } finally {
+      if (cacheKey) {
+        inFlightRequests.delete(cacheKey);
       }
     }
+  })();
 
-    return data;
-  } catch (err) {
-    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
-    recordMetric(action, durationMs, false);
-    console.warn(`[Backend POST ${action} Notice - ${durationMs}ms]:`, err.message);
-    return null;
+  if (cacheKey) {
+    inFlightRequests.set(cacheKey, promise);
   }
+
+  return promise;
 }
 
 /**

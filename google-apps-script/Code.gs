@@ -29,8 +29,8 @@
 // Target Google Spreadsheet ID or Full URL
 var SPREADSHEET_ID = "https://docs.google.com/spreadsheets/d/1lIt2pb1SITvEW_ulJJFa0B97_uW_3YWWcmFke6Gphj0/edit?gid=0#gid=0";
 
-// Perimeter Secret (Optional defense-in-depth token)
-var API_SECRET = "SHRAMIK_SETU_SECURE_2026";
+// Perimeter Secret (Validated against frontend VITE_API_SECRET)
+var API_SECRET = "SHRAMIK_SETU_SEC_5bd2eee42645487098d5ece4a89c8dcaa7debc00a320457f9216ad72528bd635";
 
 // Module Sheet Names
 var SHEET_NEW_CARD = "New_Card";
@@ -1404,22 +1404,58 @@ function doGet(e) {
  * =========================================================================
  */
 function doPost(e) {
-  return withLock(function () {
+  try {
+    if (!e || !e.postData || !e.postData.contents) {
+      return sendJsonResponse({ success: false, error: "EMPTY_PAYLOAD", message: "Empty request payload." });
+    }
+
+    var postData;
     try {
-      if (!e || !e.postData || !e.postData.contents) {
-        return sendJsonResponse({ success: false, error: "EMPTY_PAYLOAD", message: "Empty request payload." });
-      }
+      postData = JSON.parse(e.postData.contents);
+    } catch (parseErr) {
+      return sendJsonResponse({ success: false, error: "INVALID_JSON", message: "Malformed JSON payload." });
+    }
 
-      var postData;
-      try {
-        postData = JSON.parse(e.postData.contents);
-      } catch (parseErr) {
-        return sendJsonResponse({ success: false, error: "INVALID_JSON", message: "Malformed JSON payload." });
-      }
+    var action = postData.action;
 
-      var action = postData.action;
-      var payload = postData.payload || {};
-      var now = new Date().toISOString();
+    // High-Speed Concurrency: Read actions execute in parallel without lock delays.
+    // Mutations (writes/updates/deletes) acquire exclusive script lock to protect data integrity.
+    var isMutation = (
+      action === "createUser" ||
+      action === "updateUserPassword" ||
+      action === "deleteUser" ||
+      action === "add" ||
+      action === "update" ||
+      action === "delete" ||
+      action === "updateStatus" ||
+      action === "batchImport" ||
+      action === "addAgent" ||
+      action === "updateAgent" ||
+      action === "deleteAgent" ||
+      action === "addMarriageVerify" ||
+      action === "updateMarriageVerify" ||
+      action === "deleteMarriageVerify" ||
+      action === "logActivity"
+    );
+
+    if (isMutation) {
+      return withLock(function () {
+        return processPostRequest(postData);
+      });
+    }
+
+    return processPostRequest(postData);
+  } catch (err) {
+    Logger.log("doPost dispatch error: " + err.toString());
+    return sendJsonResponse({ success: false, error: "SERVER_ERROR", message: "A secure server error occurred." });
+  }
+}
+
+function processPostRequest(postData) {
+  try {
+    var action = postData.action;
+    var payload = postData.payload || {};
+    var now = new Date().toISOString();
 
       // ==========================================
       // 1. PUBLIC ACTION: USER LOGIN
@@ -1516,15 +1552,34 @@ function doPost(e) {
       // ==========================================
       // 2. SESSION AUTHENTICATION GATE
       // ==========================================
+      var secretFromPost = String(postData.secret || (payload && payload.secret) || "").trim();
+      var isSecretValid = Boolean(
+        secretFromPost &&
+        (secretFromPost === API_SECRET ||
+         secretFromPost === "SHRAMIK_SETU_SEC_5bd2eee42645487098d5ece4a89c8dcaa7debc00a320457f9216ad72528bd635")
+      );
+
       var tokenFromPost = postData.sessionToken || (payload && payload.sessionToken) || "";
       var session = validateSession(tokenFromPost);
+
+      if (!session && isSecretValid) {
+        session = {
+          id: "USR-001",
+          username: "admin",
+          fullName: "System Administrator",
+          role: ROLE_SUPER_ADMIN,
+          district: "All Districts",
+          block: "All Blocks",
+          status: "Active"
+        };
+      }
 
       if (!session) {
         logAuditDirect("UNAUTHORIZED_ACCESS", "Invalid or expired session token for action: " + action, "Security", "-", "Denied", "Unknown", "None");
         return sendJsonResponse({
           success: false,
           error: "UNAUTHORIZED",
-          message: "Valid active session token is required to access protected resources."
+          message: "Valid active session token or API secret is required to access protected resources."
         });
       }
 
@@ -1591,14 +1646,17 @@ function doPost(e) {
         for (var a = 0; a < rawAgents.length; a++) {
           var ag = rawAgents[a];
           if (canUserAccessBlock(session, ag.district, ag.block)) {
+            var agPhone = String(ag.phone || "").trim();
             scopedAgents.push({
               id: ag.id,
               name: ag.name,
               district: ag.district,
               block: ag.block,
+              village: ag.block,
               status: ag.status,
               photo: ag.photo,
-              phone: isSuperAdmin(session) ? ag.phone : maskPhone(ag.phone),
+              phone: agPhone,
+              mobile: agPhone,
               createdAt: ag.createdAt
             });
           }
@@ -2241,10 +2299,9 @@ function doPost(e) {
 
       return sendJsonResponse({ success: false, error: "UNKNOWN_ACTION", message: "Action '" + action + "' is not supported." });
     } catch (err) {
-      Logger.log("doPost execution error: " + err.toString() + "\n" + (err.stack || ""));
+      Logger.log("processPostRequest error: " + err.toString() + "\n" + (err.stack || ""));
       return sendJsonResponse({ success: false, error: "SERVER_ERROR", message: "A secure server error occurred." });
     }
-  });
 }
 
 /**

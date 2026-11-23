@@ -21,10 +21,8 @@ import {
   Cross,
   GraduationCap,
   Activity,
-  ShieldCheck,
   Check,
-  Users,
-  RotateCw
+  Users
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Link } from 'react-router-dom';
@@ -33,8 +31,6 @@ export default function DashboardPage() {
   const {
     applications,
     stats,
-    isSummaryLoading,
-    refreshDashboardSummary,
     handleOpenAddModal,
     handleOpenExportModal,
     handleOpenViewModal
@@ -159,40 +155,6 @@ export default function DashboardPage() {
   return (
     <div className="space-y-5 animate-fadeIn">
 
-      {/* Official Government Portal Banner */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <img
-            src="/logo.png"
-            alt="ShramikSetu"
-            className="h-12 sm:h-14 w-auto object-contain shrink-0"
-          />
-          <div className="border-l border-slate-200 pl-4 hidden sm:block">
-            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-              Odisha Building & Other Construction Workers' Welfare Board
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Integrated Beneficiary Registration, Card Renewal & Welfare Assistance Field Operations System
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={() => refreshDashboardSummary(true)}
-            disabled={isSummaryLoading}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-2xs transition-all active:scale-95 disabled:opacity-50"
-            title="Refresh pre-aggregated KPIs from cloud database"
-          >
-            <RotateCw className={`w-3.5 h-3.5 text-blue-600 ${isSummaryLoading ? 'animate-spin' : ''}`} />
-            <span>{isSummaryLoading ? 'Syncing...' : 'Sync Data'}</span>
-          </button>
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Official Portal • Active Session
-          </span>
-        </div>
-      </div>
 
       {/* ======================================================== */}
       {/* 8 KPI STAT CARDS (2 ROWS OF 4 CARDS) - SHRAMIKSETU DATA   */}

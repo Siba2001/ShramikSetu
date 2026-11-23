@@ -113,7 +113,10 @@ export default function ApplicationModulePage({
   }, [searchInput]);
 
   const hasDataRef = useRef(false);
-  hasDataRef.current = !!(serverData && Array.isArray(serverData.data) && serverData.data.length > 0);
+  hasDataRef.current = Boolean(
+    (serverData && Array.isArray(serverData.data) && serverData.data.length > 0) ||
+    (applications && applications.length > 0)
+  );
 
   // Instant 0ms Optimistic & Background SWR live synchronization listeners
   useEffect(() => {
@@ -690,9 +693,9 @@ export default function ApplicationModulePage({
 
           {/* Main Table */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative">
-            {isLoadingPage && serverData === null && (
-              <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
-                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-md border border-slate-200 text-xs font-bold text-slate-700">
+            {isLoadingPage && (!displayRows || displayRows.length === 0) && (
+              <div className="py-16 flex items-center justify-center">
+                <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
                   <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                   <span>Loading records...</span>
                 </div>
