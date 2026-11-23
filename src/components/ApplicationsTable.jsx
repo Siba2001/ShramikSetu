@@ -538,7 +538,11 @@ export default function ApplicationsTable({
                         <button
                           onClick={() => {
                             if (window.confirm(`Are you sure you want to delete application for ${app.applicantName}?`)) {
-                              onDeleteApplication(app.id);
+                              onDeleteApplication(app.id, {
+                                trackNo: app.trackNo,
+                                cardNo: app.cardNo,
+                                serviceType: app.serviceType
+                              });
                             }
                           }}
                           className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"

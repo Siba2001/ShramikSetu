@@ -232,14 +232,17 @@ export async function verifyMasterKey(inputKey) {
   const clean = (inputKey || '').trim();
   if (!clean) return false;
 
-  const storedMaster = localStorage.getItem(MASTER_KEY_STORAGE) || DEFAULT_MASTER_TOKEN;
-  if (clean === storedMaster || clean === DEFAULT_MASTER_TOKEN || clean === LEGACY_MASTER_TOKEN) {
+  const storedMaster = localStorage.getItem(MASTER_KEY_STORAGE);
+  if (storedMaster && clean === storedMaster) {
+    return true;
+  }
+  if (!storedMaster && clean === DEFAULT_MASTER_TOKEN) {
     return true;
   }
 
   const accounts = getSystemAccounts();
   const adminAcc = accounts.find(a => a.username.toLowerCase() === 'admin');
-  if (adminAcc) {
+  if (adminAcc && adminAcc.passwordHash && adminAcc.salt) {
     const isMatch = await verifyPassword(clean, adminAcc.passwordHash, adminAcc.salt);
     if (isMatch) return true;
   }
@@ -499,7 +502,8 @@ export async function loginUser(username, password, remember = true) {
         }
         saveSystemAccounts(accounts);
 
-        const sessionData = establishSession(userObj, remember);
+        const serverToken = backendRes.session ? backendRes.session.token : null;
+        const sessionData = establishSession({ ...userObj, token: serverToken, sessionToken: serverToken }, remember);
         return {
           success: true,
           user: sessionData
@@ -545,7 +549,7 @@ export function extendSession() {
 
 export function establishSession(account, remember = true) {
   const now = new Date().toISOString();
-  const sessionToken = generateSecureToken();
+  const sessionToken = account.sessionToken || account.token || generateSecureToken();
   const sessionData = {
     username: account.username,
     fullName: account.fullName,
@@ -555,6 +559,7 @@ export function establishSession(account, remember = true) {
     email: account.email,
     avatar: account.avatar || 'AD',
     token: sessionToken,
+    sessionToken: sessionToken,
     loginAt: now,
     lastActiveAt: now
   };
@@ -663,6 +668,11 @@ export function logoutUser() {
     const user = getCurrentUser();
     if (user) {
       recordAuditEvent('LOGOUT', `User @${user.username} safely signed out`, 'info');
+      // Revoke server-side session on Google Apps Script
+      const token = user.sessionToken || user.token;
+      if (token && getGoogleScriptUrl()) {
+        apiPost('logout', { sessionToken: token }).catch(() => {});
+      }
       // Remove from active sessions
       const sessions = getActiveSessions().filter(s => s.token !== user.token);
       localStorage.setItem(ACTIVE_SESSIONS_KEY, JSON.stringify(sessions));

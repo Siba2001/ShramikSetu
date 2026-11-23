@@ -1,95 +1,127 @@
 /**
- * Centralized API Client for Google Apps Script Web App Backend
- * Handles POST/GET requests, CORS, text/plain payloads, AbortController timeouts, and structured responses.
+ * Centralized High-Performance API Client for Google Apps Script Web App Backend
+ * Handles POST/GET requests, latency benchmarking, CORS, text/plain payloads, and structured responses.
+ * Implements server-side cryptographic session token attachment in POST request bodies.
+ * 
+ * Security Rule: Bearer session tokens are NEVER transmitted in GET URL query parameters.
+ * All authenticated operations use POST body payloads to eliminate URL/log credential leakage.
  */
 
-import { getActiveGoogleScriptUrl, getActiveApiSecret } from '../config/backendConfig';
+import { GOOGLE_SCRIPT_WEB_APP_URL, API_SECRET, isBackendConfigured } from '../config/backendConfig';
+
+/**
+ * Retrieve active server session token from authenticated user state
+ */
+export function getActiveSessionToken() {
+  try {
+    const raw = sessionStorage.getItem('shramiksetu_auth_user') || localStorage.getItem('shramiksetu_auth_user');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return parsed.sessionToken || parsed.token || '';
+    }
+  } catch (e) {}
+  return '';
+}
+
+/**
+ * Performance metrics tracker (in-memory for diagnostics)
+ */
+export const apiMetrics = {
+  totalRequests: 0,
+  successfulRequests: 0,
+  failedRequests: 0,
+  lastLatencyMs: 0,
+  averageLatencyMs: 0,
+  history: []
+};
+
+function recordMetric(action, durationMs, success) {
+  apiMetrics.totalRequests++;
+  if (success) apiMetrics.successfulRequests++;
+  else apiMetrics.failedRequests++;
+
+  apiMetrics.lastLatencyMs = durationMs;
+  const total = (apiMetrics.averageLatencyMs * (apiMetrics.totalRequests - 1)) + durationMs;
+  apiMetrics.averageLatencyMs = Math.round(total / apiMetrics.totalRequests);
+
+  apiMetrics.history.push({
+    action,
+    durationMs,
+    success,
+    timestamp: new Date().toISOString()
+  });
+
+  if (apiMetrics.history.length > 25) {
+    apiMetrics.history.shift();
+  }
+}
 
 /**
  * Perform GET request to Google Apps Script Web App
+ * NOTE: Only used for public, unauthenticated health checks (e.g. 'ping').
+ * All authenticated read operations are dispatched via POST to avoid URL token exposure.
  */
-export async function apiGet(action, params = {}, timeoutMs = 12000) {
-  const scriptUrl = getActiveGoogleScriptUrl();
-  const secret = getActiveApiSecret();
+export async function apiGet(action, params = {}) {
+  if (!isBackendConfigured) return null;
 
-  if (!scriptUrl || !scriptUrl.startsWith('http')) {
-    console.warn('[Backend GET Warning]: Google Script URL is not configured.');
-    return null;
+  // If action requires authentication, route via POST body to prevent URL token leakage
+  if (action !== 'ping') {
+    return await apiPost(action, params);
   }
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   try {
-    const url = new URL(scriptUrl);
-    url.searchParams.set('action', action);
-    url.searchParams.set('_t', String(Date.now())); // Cache buster to ensure real-time fresh fetch without browser caching
-    if (secret) {
-      url.searchParams.set('secret', secret);
-    }
-    Object.keys(params).forEach(k => {
-      if (params[k] !== undefined && params[k] !== null) {
-        url.searchParams.set(k, String(params[k]));
-      }
-    });
+    const url = new URL(GOOGLE_SCRIPT_WEB_APP_URL);
+    url.searchParams.set('action', 'ping');
+    url.searchParams.set('_t', String(Date.now())); // Cache buster
 
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
         'Accept': 'application/json'
-      },
-      signal: controller.signal
+      }
     });
 
+    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
+
     if (!response.ok) {
+      recordMetric(action, durationMs, false);
       throw new Error(`Server returned HTTP ${response.status}`);
     }
 
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (parseErr) {
-      console.warn(`[Backend GET ${action} JSON parse error]:`, text.slice(0, 200));
-      return null;
-    }
+    const data = await response.json();
+    recordMetric(action, durationMs, true);
     return data;
   } catch (err) {
-    if (err.name === 'AbortError') {
-      console.warn(`[Backend GET ${action}] Request timed out after ${timeoutMs}ms`);
-    } else {
-      console.warn(`[Backend GET ${action} Warning]:`, err.message);
-    }
+    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
+    recordMetric(action, durationMs, false);
+    console.warn(`[Backend GET ${action} Notice - ${durationMs}ms]:`, err.message);
     return null;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
 /**
  * Perform POST request to Google Apps Script Web App
- * Uses text/plain to avoid CORS preflight issues with Google Apps Script
+ * Uses text/plain to avoid CORS preflight issues with Google Apps Script.
+ * Attaches the cryptographic sessionToken securely within the request body payload.
  */
-export async function apiPost(action, payload = {}, timeoutMs = 15000) {
-  const scriptUrl = getActiveGoogleScriptUrl();
-  const secret = getActiveApiSecret();
+export async function apiPost(action, payload = {}) {
+  if (!isBackendConfigured) return null;
+  const sessionToken = (payload && payload.sessionToken) || getActiveSessionToken();
 
-  if (!scriptUrl || !scriptUrl.startsWith('http')) {
-    console.warn('[Backend POST Warning]: Google Script URL is not configured.');
-    return null;
-  }
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-
+  const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   try {
     const bodyString = JSON.stringify({
       action,
-      secret,
+      secret: API_SECRET,
+      sessionToken: sessionToken || undefined,
       payload
     });
 
-    const response = await fetch(scriptUrl, {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000);
+
+    const response = await fetch(GOOGLE_SCRIPT_WEB_APP_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8'
@@ -97,28 +129,50 @@ export async function apiPost(action, payload = {}, timeoutMs = 15000) {
       body: bodyString,
       signal: controller.signal
     });
+    clearTimeout(timeoutId);
+
+    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
 
     if (!response.ok) {
+      recordMetric(action, durationMs, false);
       throw new Error(`Server returned HTTP ${response.status}`);
     }
 
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (parseErr) {
-      console.warn(`[Backend POST ${action} JSON parse error]:`, text.slice(0, 200));
-      return null;
+    const data = await response.json();
+    recordMetric(action, durationMs, true);
+
+    if (data && data.error === 'UNAUTHORIZED') {
+      if (typeof window !== 'undefined' && window.dispatchEvent) {
+        window.dispatchEvent(new CustomEvent('shramiksetu:session_expired', { detail: data }));
+      }
     }
+
     return data;
   } catch (err) {
-    if (err.name === 'AbortError') {
-      console.warn(`[Backend POST ${action}] Request timed out after ${timeoutMs}ms`);
-    } else {
-      console.warn(`[Backend POST ${action} Warning]:`, err.message);
-    }
+    const durationMs = Math.round(((typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()) - startTime);
+    recordMetric(action, durationMs, false);
+    console.warn(`[Backend POST ${action} Notice - ${durationMs}ms]:`, err.message);
     return null;
-  } finally {
-    clearTimeout(timer);
   }
+}
+
+/**
+ * High-Speed API Helper: Fetch Pre-Aggregated Dashboard Summary
+ */
+export async function fetchDashboardSummaryApi(bypassCache = false) {
+  return await apiPost('getDashboardSummary', { bypassCache: !!bypassCache });
+}
+
+/**
+ * High-Speed API Helper: Fetch Paginated & Filtered Applications
+ */
+export async function fetchApplicationsPagedApi(params = {}) {
+  return await apiPost('getApplicationsPaged', params);
+}
+
+/**
+ * High-Speed API Helper: Targeted Application Status Update
+ */
+export async function updateApplicationStatusApi(payload = {}) {
+  return await apiPost('updateStatus', payload);
 }

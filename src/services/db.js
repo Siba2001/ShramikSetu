@@ -1,59 +1,75 @@
 import { INITIAL_DISTRICTS } from '../data/locationData';
-import { getActiveGoogleScriptUrl, saveCustomGoogleScriptUrl } from '../config/backendConfig';
-import { apiGet, apiPost } from './api';
-import { syncDirect } from './syncQueue';
+import { GOOGLE_SCRIPT_WEB_APP_URL } from '../config/backendConfig';
+import {
+  apiGet,
+  apiPost,
+  fetchDashboardSummaryApi,
+  fetchApplicationsPagedApi,
+  updateApplicationStatusApi
+} from './api';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
 const AGENTS_STORAGE_KEY = 'shramik_setu_agents_v1';
+const DASHBOARD_SUMMARY_STORAGE_KEY = 'shramik_setu_dashboard_summary_v1';
+
+// Legacy dummy agent names to auto-purge from localStorage
+const LEGACY_DUMMY_NAMES = [
+  'kalu', 'litu', 'daitari', 'pana', 'dilip',
+  'krushna', 'babula', 'bidya', 'ranjan dabarasingi', 'niranjan'
+];
 
 /**
- * Get configured Google Apps Script Web App URL
+ * Get configured Google Apps Script Web App URL from environment or localStorage override
  */
 export function getGoogleScriptUrl() {
-  return getActiveGoogleScriptUrl();
+  if (typeof localStorage !== 'undefined') {
+    const custom = localStorage.getItem('shramiksetu_gas_url');
+    if (custom) return custom;
+  }
+  return GOOGLE_SCRIPT_WEB_APP_URL;
 }
 
 /**
- * Save custom Google Apps Script Web App URL to localStorage
+ * Set custom Google Apps Script Web App URL in localStorage
  */
 export function setGoogleScriptUrl(url) {
-  saveCustomGoogleScriptUrl(url);
+  if (typeof localStorage !== 'undefined') {
+    if (url) {
+      localStorage.setItem('shramiksetu_gas_url', url);
+    } else {
+      localStorage.removeItem('shramiksetu_gas_url');
+    }
+  }
 }
 
 /**
  * Load all active applications from LocalStorage
- * With automatic migration from legacy storage keys
+ * Automatically filters out any legacy dummy/test records
  */
 export function loadApplications() {
   try {
-    let raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (!raw) {
-      // Migrate from any legacy storage keys if present
-      const legacyRaw = localStorage.getItem('shramik_setu_applications_v1') || 
-                        localStorage.getItem('shramik_setu_applications') ||
-                        localStorage.getItem('shramiksetu_applications');
-      if (legacyRaw) {
-        raw = legacyRaw;
-        localStorage.setItem(LOCAL_STORAGE_KEY, legacyRaw);
-      }
-    }
-
-    if (!raw) {
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
       return [];
     }
-
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
 
-    // Filter out only completely blank items or obvious placeholder tracks
+    // Automatically purge old phantom/dummy records left over from earlier tests
     const cleaned = list.filter(app => {
       if (!app) return false;
+      const agentLower = (app.agent || '').trim().toLowerCase();
       const trackLower = (app.trackNo || '').trim().toLowerCase();
       if (trackLower === 'asdf' || trackLower === 'test' || trackLower === 'test1234') return false;
+      if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
       return true;
     });
 
+    if (cleaned.length !== list.length) {
+      saveApplications(cleaned);
+    }
     return cleaned;
   } catch (e) {
     console.error('Failed to load applications from localStorage:', e);
@@ -62,13 +78,21 @@ export function loadApplications() {
 }
 
 /**
- * Save all applications to LocalStorage
+ * Save applications to LocalStorage with quota defense and memory protection
  */
 export function saveApplications(apps) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps));
+    const list = Array.isArray(apps) ? apps : [];
+    // Protect localStorage quota (~5MB). If list is massive (e.g. 5,000+), cache the most recent 1,500 records
+    const toStore = list.length > 1500 ? list.slice(0, 1500) : list;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toStore));
   } catch (e) {
-    console.error('Failed to save applications:', e);
+    console.warn('LocalStorage quota warning - storing compact cache:', e.message);
+    try {
+      if (Array.isArray(apps)) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps.slice(0, 500)));
+      }
+    } catch (inner) { }
   }
 }
 
@@ -100,7 +124,7 @@ export function saveDistricts(districts) {
 }
 
 /**
- * Load Agents from storage - 100% database driven
+ * Load Agents from storage - 100% database driven with zero hardcoded dummy data
  */
 export function loadAgents() {
   try {
@@ -110,7 +134,20 @@ export function loadAgents() {
     }
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
-    return list.filter(a => a && a.name);
+
+    const cleaned = list.filter(a => {
+      if (!a || !a.name) return false;
+      const lower = a.name.trim().toLowerCase();
+      if (LEGACY_DUMMY_NAMES.includes(lower) && String(a.id || '').startsWith('ag-')) {
+        return false;
+      }
+      return true;
+    });
+
+    if (cleaned.length !== list.length) {
+      localStorage.setItem(AGENTS_STORAGE_KEY, JSON.stringify(cleaned));
+    }
+    return cleaned;
   } catch (e) {
     return [];
   }
@@ -135,13 +172,8 @@ export async function fetchAgentsFromBackend() {
   try {
     const res = await apiGet('getAgents');
     if (res && res.success && Array.isArray(res.agents)) {
-      // Merge remote agents with any local in-flight agents not yet on remote
-      const remoteIds = new Set(res.agents.map(a => String(a.id || a.name || '').toLowerCase()));
-      const localAgents = loadAgents();
-      const inFlight = localAgents.filter(a => !remoteIds.has(String(a.id || a.name || '').toLowerCase()));
-      const merged = [...inFlight, ...res.agents];
-      saveAgents(merged);
-      return merged;
+      saveAgents(res.agents);
+      return res.agents;
     }
   } catch (e) {
     console.warn('Notice: Backend fetch for agents:', e);
@@ -150,9 +182,9 @@ export async function fetchAgentsFromBackend() {
 }
 
 /**
- * Add a new Agent - commits locally for instant UI update and syncs directly to Google Sheets database
+ * Add a new Agent - pushes to Google Sheets database in background (instant optimistic response)
  */
-export async function addAgent(agentData) {
+export function addAgent(agentData) {
   const agents = loadAgents();
   const id = `AG-${Date.now()}`;
   const phone = (agentData.mobile || agentData.phone || '').trim();
@@ -170,22 +202,20 @@ export async function addAgent(agentData) {
     createdAt: new Date().toISOString()
   };
 
-  // 1. Instantly save to local storage so UI updates immediately without freezing
   agents.unshift(newAgent);
   saveAgents(agents);
 
-  // 2. Direct synchronization with Google Sheets database (with automatic resilient sync queue)
-  syncDirect('addAgent', newAgent, id, 'agent').catch(err => {
-    console.warn('Google Sheet agent sync notice:', err);
+  apiPost('addAgent', newAgent).catch(err => {
+    console.warn('Backend sync warning for addAgent:', err);
   });
 
   return newAgent;
 }
 
 /**
- * Update an existing Agent - commits locally and updates Google Sheets database directly
+ * Update an existing Agent - pushes to Google Sheets database in background
  */
-export async function updateAgent(id, updates) {
+export function updateAgent(id, updates) {
   const agents = loadAgents();
   const index = agents.findIndex(a => a.id === id);
   if (index === -1) return null;
@@ -196,6 +226,7 @@ export async function updateAgent(id, updates) {
 
   const updatedAgent = {
     ...agents[index],
+    ...updates,
     name: (updates.name || agents[index].name).trim(),
     mobile: phone,
     phone: phone,
@@ -206,11 +237,13 @@ export async function updateAgent(id, updates) {
     updatedAt: new Date().toISOString()
   };
 
-  // 1. Instantly update local copy
   agents[index] = updatedAgent;
   saveAgents(agents);
 
-  // If agent name changed, update matching applications
+  apiPost('updateAgent', { ...updatedAgent, oldName }).catch(err => {
+    console.warn('Backend sync warning for updateAgent:', err);
+  });
+
   if (oldName && updates.name && oldName.toLowerCase() !== updates.name.trim().toLowerCase()) {
     try {
       const apps = loadApplications();
@@ -229,27 +262,20 @@ export async function updateAgent(id, updates) {
     }
   }
 
-  // 2. Direct sync to Google Sheets database
-  syncDirect('updateAgent', { ...updatedAgent, oldName }, id, 'agent').catch(err => {
-    console.warn('Google Sheet agent update notice:', err);
-  });
-
   return updatedAgent;
 }
 
 /**
- * Delete an Agent - removes locally and from Google Sheets database directly
+ * Delete an Agent - removes from Google Sheets database in background
  */
-export async function deleteAgent(id) {
+export function deleteAgent(id) {
   const agents = loadAgents();
   const target = agents.find(a => a.id === id || a.name === id);
   const filtered = agents.filter(a => a.id !== id && a.name !== id);
-
   saveAgents(filtered);
 
-  // Direct sync delete to Google Sheets database
-  syncDirect('deleteAgent', { id, name: target ? target.name : id }, id, 'agent').catch(err => {
-    console.warn('Google Sheet agent delete notice:', err);
+  apiPost('deleteAgent', { id, name: target ? target.name : id }).catch(err => {
+    console.warn('Backend sync warning for deleteAgent:', err);
   });
 
   return filtered;
@@ -260,6 +286,7 @@ export async function deleteAgent(id) {
  */
 export function clearAllData() {
   localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify([]));
+  localStorage.removeItem(DASHBOARD_SUMMARY_STORAGE_KEY);
   localStorage.removeItem('shramik_setu_applications_v1');
   localStorage.removeItem('shramik_setu_completed_archive_v1');
   localStorage.removeItem('shramik_setu_completed_archive_v2');
@@ -267,7 +294,7 @@ export function clearAllData() {
 }
 
 /**
- * Add a new application - commits locally for instant UI update and syncs directly to Google Sheets database
+ * Add a new application
  */
 export async function addApplication(appData) {
   const apps = loadApplications();
@@ -292,20 +319,19 @@ export async function addApplication(appData) {
     updatedAt: now
   };
 
-  // 1. Instantly save to local storage so UI updates smoothly without freezing
   apps.unshift(newApp);
   saveApplications(apps);
+  clearPagedApplicationsCache();
 
-  // 2. Direct synchronization with Google Sheet database (with background sync queue guarantee)
-  syncDirect('add', newApp, newApp.id, 'application').catch(err => {
-    console.warn('Google Sheet application sync notice:', err);
+  apiPost('add', newApp).catch(err => {
+    console.warn('Google Sheet sync notice:', err);
   });
 
   return newApp;
 }
 
 /**
- * Update an existing application - commits locally and directly updates Google Sheets database
+ * Update an existing application
  */
 export async function updateApplication(id, updates) {
   const apps = loadApplications();
@@ -319,42 +345,83 @@ export async function updateApplication(id, updates) {
     updatedAt: now
   };
 
-  // 1. Instantly update local copy
   apps[index] = updated;
   saveApplications(apps);
+  clearPagedApplicationsCache();
 
-  // 2. Direct synchronization with Google Sheet database
-  syncDirect('update', updated, id, 'application').catch(err => {
-    console.warn('Google Sheet application update notice:', err);
-  });
+  apiPost('update', updated).catch(err => console.warn('Google Sheet update notice:', err));
 
   return { completedAndDeleted: false, record: updated };
 }
 
 /**
- * Delete application explicitly - removes locally and from Google Sheets database directly
+ * Fast Local-First Delete with Asynchronous Background Cloud Sync (DIVY-IMPEX Architecture)
  */
-export async function deleteApplication(id) {
+export async function deleteApplication(id, extra = {}) {
+  // 1. Instant local storage purge
   const apps = loadApplications();
-  const index = apps.findIndex(a => a.id === id);
-  if (index === -1) return false;
+  const index = apps.findIndex(a => (id && a.id === id) || (extra.trackNo && a.trackNo === extra.trackNo));
+  let targetApp = null;
+  if (index !== -1) {
+    targetApp = apps[index];
+    apps.splice(index, 1);
+    saveApplications(apps);
+  }
 
-  const targetApp = apps[index];
+  // 2. Clear paged memory and session caches immediately
+  clearPagedApplicationsCache();
 
-  // 1. Instantly remove from local copy
-  apps.splice(index, 1);
-  saveApplications(apps);
+  const payload = {
+    id: id || targetApp?.id,
+    trackNo: extra.trackNo || targetApp?.trackNo,
+    cardNo: extra.cardNo || targetApp?.cardNo,
+    serviceType: extra.serviceType || targetApp?.serviceType
+  };
 
-  // 2. Direct synchronization with Google Sheet database
-  syncDirect('delete', { 
-    id, 
-    trackNo: targetApp?.trackNo, 
-    serviceType: targetApp?.serviceType 
-  }, id, 'application').catch(err => {
-    console.warn('Google Sheet application delete notice:', err);
+  // 3. Fire-and-forget background push to Google Apps Script (non-blocking)
+  apiPost('delete', payload).catch(err => {
+    console.warn('Google Sheet background delete notice:', err);
   });
 
   return true;
+}
+
+/**
+ * TARGETED STATUS UPDATE (Fast, column-targeted, zero full database refresh required)
+ */
+export async function updateApplicationStatusTargeted(id, status, remarks, serviceType, user = 'Operator', role = 'Staff') {
+  const apps = loadApplications();
+  const index = apps.findIndex(a => a.id === id);
+  let updatedRecord = null;
+
+  if (index !== -1) {
+    apps[index] = {
+      ...apps[index],
+      status,
+      remarks: remarks !== undefined ? remarks : apps[index].remarks,
+      officer: remarks !== undefined ? remarks : apps[index].officer,
+      updatedAt: new Date().toISOString()
+    };
+    saveApplications(apps);
+    clearPagedApplicationsCache();
+    updatedRecord = apps[index];
+  }
+
+  // Send lightweight targeted call to backend
+  try {
+    const res = await updateApplicationStatusApi({
+      id,
+      status,
+      remarks,
+      serviceType: serviceType || (updatedRecord?.serviceType),
+      user,
+      role
+    });
+    return { success: true, record: updatedRecord, backendRes: res };
+  } catch (err) {
+    console.warn('Targeted status backend update notice:', err);
+    return { success: true, record: updatedRecord };
+  }
 }
 
 /**
@@ -384,6 +451,7 @@ export async function batchImportApplications(items) {
 
   const combined = [...formatted, ...apps];
   saveApplications(combined);
+  clearPagedApplicationsCache();
 
   apiPost('batchImport', { items: formatted }).catch(err => console.warn('Google Sheet batch import notice:', err));
 
@@ -391,49 +459,288 @@ export async function batchImportApplications(items) {
 }
 
 /**
- * Fetch latest data from Google Sheet Web App
- * Real-time synchronization directly from the Google Sheet database
+ * HIGH-SPEED PRE-AGGREGATED DASHBOARD SUMMARY
+ * Retrieves aggregated KPIs from Google Apps Script CacheService without downloading full row database.
  */
-export async function fetchFromGoogleSheet() {
+export async function fetchDashboardSummary(bypassCache = false) {
   try {
-    const data = await apiGet('getAll');
+    const res = await fetchDashboardSummaryApi(bypassCache);
+    if (res && res.success) {
+      const rawCategoryCounts = res.categoryCounts || res.serviceStats || res.serviceCounts || {};
+      const rawBlockCounts = res.blockCounts || res.blockStats || res.blockDistribution || {};
+      const rawDistrictCounts = res.districtCounts || res.districtStats || res.districtDistribution || {};
+
+      const renewalCount = (rawCategoryCounts['Card Renewal'] || 0) + (rawCategoryCounts['card renewal'] || 0);
+      const contributionCount = rawCategoryCounts['Annual Contribution'] || 0;
+
+      const normalized = {
+        ...res,
+        categoryCounts: {
+          'New Card': rawCategoryCounts['New Card'] || rawCategoryCounts['new card'] || 0,
+          'Card Renewal': renewalCount > 0 ? renewalCount : (contributionCount > 0 ? contributionCount : 0),
+          'Annual Contribution': renewalCount > 0 ? contributionCount : 0,
+          'Marriage Benefit Apply': rawCategoryCounts['Marriage Benefit Apply'] || rawCategoryCounts['Marriage Benefit'] || 0,
+          'Maternity Benefit Apply': rawCategoryCounts['Maternity Benefit Apply'] || rawCategoryCounts['Maternity Benefit'] || 0,
+          'Death Benefit Apply': rawCategoryCounts['Death Benefit Apply'] || rawCategoryCounts['Death Benefit'] || 0,
+          'Education Assistance Apply': rawCategoryCounts['Education Assistance Apply'] || rawCategoryCounts['Education Grant'] || 0
+        },
+        serviceStats: rawCategoryCounts,
+        blockStats: rawBlockCounts,
+        blockCounts: rawBlockCounts,
+        blockDistribution: rawBlockCounts,
+        districtStats: rawDistrictCounts,
+        districtCounts: rawDistrictCounts,
+        districtDistribution: rawDistrictCounts
+      };
+
+      try {
+        localStorage.setItem(DASHBOARD_SUMMARY_STORAGE_KEY, JSON.stringify(normalized));
+      } catch (e) { }
+      return normalized;
+    }
+  } catch (err) {
+    console.warn('Dashboard summary fetch notice:', err?.message || err);
+  }
+
+  // Fallback: load cached summary from localStorage if available
+  try {
+    const cached = localStorage.getItem(DASHBOARD_SUMMARY_STORAGE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (e) { }
+
+  return null;
+}
+
+// High-Speed In-Memory & Session Paged Cache for instantaneous (0ms) module switching
+const memoryPagedCache = new Map();
+const SESSION_CACHE_PREFIX = 'shramiksetu_paged_cache_';
+
+function buildPagedCacheKey(params = {}) {
+  return [
+    params.service || 'All',
+    params.page || 1,
+    params.pageSize || 50,
+    (params.search || '').trim().toLowerCase(),
+    params.block || 'All',
+    params.agent || 'All',
+    params.status || 'All',
+    params.fromDate || '',
+    params.toDate || ''
+  ].join('::');
+}
+
+/**
+ * Instantly retrieve cached page (0ms latency)
+ */
+export function getCachedPagedApplications(params = {}) {
+  const key = buildPagedCacheKey(params);
+  // 1. Check in-memory map
+  const mem = memoryPagedCache.get(key);
+  if (mem && (Date.now() - mem.timestamp < 180000)) { // 3 minutes validity
+    return mem.data;
+  }
+  // 2. Check sessionStorage fallback
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem(SESSION_CACHE_PREFIX + key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (Date.now() - parsed.timestamp < 180000)) {
+          memoryPagedCache.set(key, parsed);
+          return parsed.data;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/**
+ * Cache paged applications result in memory and session
+ */
+export function setCachedPagedApplications(params = {}, data) {
+  if (!data || !data.success) return;
+  const key = buildPagedCacheKey(params);
+  const entry = { data, timestamp: Date.now() };
+  memoryPagedCache.set(key, entry);
+
+  // Keep memory cache size bounded
+  if (memoryPagedCache.size > 50) {
+    const first = memoryPagedCache.keys().next().value;
+    memoryPagedCache.delete(first);
+  }
+
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(SESSION_CACHE_PREFIX + key, JSON.stringify(entry));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Clear paged applications cache on data mutation
+ */
+export function clearPagedApplicationsCache() {
+  memoryPagedCache.clear();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const keysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(SESSION_CACHE_PREFIX)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    }
+  } catch (e) {}
+}
+
+/**
+ * SERVER-SIDE PAGINATED & FILTERED APPLICATION FETCHER
+ * Implements Stale-While-Revalidate (SWR) for instantaneous response (0ms) and background sync.
+ */
+export async function fetchApplicationsPaged(params = {}) {
+  const isBypass = !!params.bypassCache;
+  const cachedData = !isBypass ? getCachedPagedApplications(params) : null;
+
+  // Stale-While-Revalidate: If fresh data exists in cache, return immediately (0ms)
+  // and silently revalidate in background if older than 15 seconds
+  if (cachedData) {
+    const key = buildPagedCacheKey(params);
+    const entry = memoryPagedCache.get(key);
+    const isStale = !entry || (Date.now() - entry.timestamp > 15000);
+
+    if (isStale) {
+      fetchApplicationsPagedApi(params).then(fresh => {
+        if (fresh && fresh.success && Array.isArray(fresh.data)) {
+          setCachedPagedApplications(params, fresh);
+          try {
+            window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: fresh } }));
+          } catch (e) {}
+        }
+      }).catch(() => {});
+    }
+    return cachedData;
+  }
+
+  try {
+    const res = await fetchApplicationsPagedApi(params);
+    if (res && res.success && Array.isArray(res.data)) {
+      setCachedPagedApplications(params, res);
+      // Keep local storage synchronized with fetched live records
+      try {
+        const localApps = loadApplications();
+        let changed = false;
+        res.data.forEach(remoteApp => {
+          const idx = localApps.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
+          if (idx !== -1) {
+            localApps[idx] = { ...localApps[idx], ...remoteApp };
+            changed = true;
+          } else {
+            localApps.unshift(remoteApp);
+            changed = true;
+          }
+        });
+        if (changed) {
+          saveApplications(localApps);
+        }
+      } catch (e) { }
+      return res;
+    }
+  } catch (err) {
+    console.warn('Server-side paged fetch notice:', err?.message || err);
+  }
+
+  // Graceful offline fallback: filter & slice local applications in memory
+  const apps = loadApplications();
+  const service = params.service || null;
+  const page = Math.max(1, parseInt(params.page || 1, 10));
+  const pageSize = Math.max(1, parseInt(params.pageSize || 50, 10));
+  const search = (params.search || '').trim().toLowerCase();
+  const filterBlock = (params.block || 'All').trim();
+  const filterStatus = (params.status || 'All').trim();
+
+  let filtered = apps.filter(item => {
+    if (service && service !== 'All') {
+      if (service === 'Card Renewal' || service === 'Annual Contribution') {
+        if (item.serviceType !== 'Card Renewal' && item.serviceType !== 'Annual Contribution') return false;
+      } else if (item.serviceType !== service) {
+        return false;
+      }
+    }
+    if (filterBlock !== 'All' && filterBlock !== '') {
+      if ((item.block || '').toLowerCase() !== filterBlock.toLowerCase()) return false;
+    }
+    if (filterStatus !== 'All' && filterStatus !== '') {
+      const itemSt = (item.status || '').toLowerCase();
+      const fSt = filterStatus.toLowerCase();
+      if (fSt === 'pending') {
+        if (itemSt !== 'pending' && itemSt !== 'e-sign pending') return false;
+      } else if (itemSt !== fSt) {
+        return false;
+      }
+    }
+    if (search) {
+      const match = (
+        (item.applicantName && item.applicantName.toLowerCase().includes(search)) ||
+        (item.cardNo && item.cardNo.toLowerCase().includes(search)) ||
+        (item.aadhaarNo && item.aadhaarNo.toLowerCase().includes(search)) ||
+        (item.trackNo && item.trackNo.toLowerCase().includes(search)) ||
+        (item.agent && item.agent.toLowerCase().includes(search))
+      );
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  const totalRecords = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const startIndex = (page - 1) * pageSize;
+  const pagedRecords = filtered.slice(startIndex, startIndex + pageSize);
+
+  return {
+    success: true,
+    page,
+    pageSize,
+    totalRecords,
+    totalPages,
+    data: pagedRecords,
+    isLocalFallback: true
+  };
+}
+
+/**
+ * Fetch latest data from Google Sheet Web App (Legacy / Fallback synchronization)
+ */
+export async function fetchFromGoogleSheet(serviceType = null) {
+  try {
+    const params = serviceType ? { service: serviceType } : {};
+    const data = await apiGet('getAll', params);
     if (data && data.success && Array.isArray(data.data)) {
       const remoteApps = data.data;
 
-      // Accept all valid applications from the remote Google Sheet
       const validRemote = remoteApps.filter(app => {
         if (!app) return false;
         const trackLower = (app.trackNo || '').trim().toLowerCase();
+        const agentLower = (app.agent || '').trim().toLowerCase();
         if (trackLower === 'asdf' || trackLower === 'test') return false;
-        return Boolean(app.applicantName || app.trackNo || app.cardNo || app.id);
+        if (LEGACY_DUMMY_NAMES.includes(agentLower)) return false;
+        return true;
       });
 
-      // Preserve any local application that is not yet reflected in the Google Sheet (never drop user data)
-      const remoteIds = new Set();
-      validRemote.forEach(r => {
-        if (r.id) remoteIds.add(String(r.id));
-        if (r.trackNo) remoteIds.add(String(r.trackNo).trim().toLowerCase());
-      });
-
+      const now = Date.now();
       const inFlightLocal = loadApplications().filter(localApp => {
-        if (!localApp) return false;
-        const matchesId = localApp.id && remoteIds.has(String(localApp.id));
-        const matchesTrack = localApp.trackNo && remoteIds.has(String(localApp.trackNo).trim().toLowerCase());
-        return !matchesId && !matchesTrack;
+        if (!localApp || !localApp.id) return false;
+        if (validRemote.some(r => r.id === localApp.id || (r.trackNo && r.trackNo === localApp.trackNo))) {
+          return false;
+        }
+        const ageMs = localApp.createdAt ? (now - new Date(localApp.createdAt).getTime()) : Infinity;
+        return ageMs < 45000;
       });
 
       const synced = [...inFlightLocal, ...validRemote];
       saveApplications(synced);
-
-      // Also sync agents from Google Sheet
-      try {
-        const agentData = await apiGet('getAgents');
-        if (agentData && agentData.success && Array.isArray(agentData.agents)) {
-          saveAgents(agentData.agents);
-        }
-      } catch (e) {
-        console.warn('Agent sync notice:', e);
-      }
 
       return synced;
     }
@@ -488,21 +795,24 @@ export function saveMarriageVerifications(records) {
 }
 
 /**
- * Add a new Marriage Verification record - commits locally and syncs directly to Google Sheets database
+ * Add a new Marriage Verification record (Instant optimistic write + background sync)
  */
-export async function addMarriageVerification(data) {
+export function addMarriageVerification(data) {
   const records = loadMarriageVerifications();
-  const id = `MV-${Date.now()}`;
+  const id = data.id || `MV-${Date.now()}`;
   const now = new Date().toISOString();
-  const slNo = records.length + 1;
+  const slNo = data.slNo || (records.length + 1);
+  const phone = (data.phone || data.mobile || '').trim();
 
   const newRecord = {
     id,
     slNo,
     regNo: (data.regNo || data.cardNo || '').trim(),
     beneficiaryName: (data.beneficiaryName || data.applicantName || '').toUpperCase().trim(),
-    phone: (data.phone || data.mobile || '').trim(),
-    block: (data.block || 'Sanakhemundi').trim(),
+    phone: phone,
+    mobile: phone,
+    district: (data.district || 'Ganjam').trim(),
+    block: (data.block || 'General').trim(),
     certifyingAuthority: (data.certifyingAuthority || '').trim(),
     marriageCertDate: data.marriageCertDate || '',
     marriageRegdNo: (data.marriageRegdNo || '').trim(),
@@ -516,58 +826,56 @@ export async function addMarriageVerification(data) {
     updatedAt: now
   };
 
-  // 1. Instantly commit locally
   records.unshift(newRecord);
   saveMarriageVerifications(records);
 
-  // 2. Direct sync to Google Sheets database (with resilient sync queue)
-  syncDirect('addMarriageVerify', newRecord, id, 'marriage').catch(err => {
-    console.warn('Google Sheet marriage verification sync notice:', err);
+  apiPost('addMarriageVerify', newRecord).catch(err => {
+    console.warn('Backend sync notice for addMarriageVerify:', err);
   });
 
   return newRecord;
 }
 
 /**
- * Update Marriage Verification record - commits locally and updates Google Sheets database directly
+ * Update Marriage Verification record
  */
-export async function updateMarriageVerification(id, updates) {
+export function updateMarriageVerification(id, updates) {
   const records = loadMarriageVerifications();
-  const index = records.findIndex(r => r.id === id);
+  const index = records.findIndex(r => r.id === id || (updates.regNo && r.regNo === updates.regNo));
   if (index === -1) return null;
 
   const now = new Date().toISOString();
+  const phone = (updates.phone !== undefined ? updates.phone : (updates.mobile !== undefined ? updates.mobile : (records[index].phone || records[index].mobile || ''))).trim();
+
   const updated = {
     ...records[index],
     ...updates,
+    phone: phone,
+    mobile: phone,
     updatedAt: now
   };
 
-  // 1. Instantly commit locally
   records[index] = updated;
   saveMarriageVerifications(records);
 
-  // 2. Direct sync to Google Sheets database
-  syncDirect('updateMarriageVerify', updated, id, 'marriage').catch(err => {
-    console.warn('Google Sheet marriage update notice:', err);
+  apiPost('updateMarriageVerify', updated).catch(err => {
+    console.warn('Backend sync notice for updateMarriageVerify:', err);
   });
 
   return updated;
 }
 
 /**
- * Delete Marriage Verification record - removes locally and from Google Sheets database directly
+ * Delete Marriage Verification record
  */
-export async function deleteMarriageVerification(id) {
+export function deleteMarriageVerification(id) {
   const records = loadMarriageVerifications();
   const target = records.find(r => r.id === id);
   const filtered = records.filter(r => r.id !== id);
-
   saveMarriageVerifications(filtered);
 
-  // Direct sync to Google Sheets database
-  syncDirect('deleteMarriageVerify', { id, regNo: target?.regNo }, id, 'marriage').catch(err => {
-    console.warn('Google Sheet marriage delete notice:', err);
+  apiPost('deleteMarriageVerify', { id, regNo: target?.regNo }).catch(err => {
+    console.warn('Backend sync notice for deleteMarriageVerify:', err);
   });
 
   return filtered;
@@ -575,16 +883,41 @@ export async function deleteMarriageVerification(id) {
 
 /**
  * Fetch Marriage Verification records from Google Sheets backend
+ * Safely merges remote records while preserving recent local unsynced entries.
  */
 export async function fetchMarriageVerificationsFromBackend() {
   try {
     const res = await apiGet('getMarriageVerifications');
     if (res && res.success && Array.isArray(res.records)) {
-      // Merge remote records with any local records not yet confirmed in the sheet
-      const remoteIds = new Set(res.records.map(r => String(r.id || r.regNo || '').toLowerCase()));
-      const localRecords = loadMarriageVerifications();
-      const inFlight = localRecords.filter(r => !remoteIds.has(String(r.id || r.regNo || '').toLowerCase()));
-      const merged = [...inFlight, ...res.records];
+      const currentLocal = loadMarriageVerifications();
+      const mergedMap = new Map();
+
+      // Put remote records in map
+      res.records.forEach(r => {
+        if (r && (r.id || r.regNo)) {
+          const key = r.id || r.regNo;
+          const phone = (r.phone || r.mobile || '').trim();
+          mergedMap.set(key, {
+            ...r,
+            phone: phone,
+            mobile: phone
+          });
+        }
+      });
+
+      // Preserve recent local records created within last 15 minutes that may still be syncing
+      const fifteenMinutesAgo = Date.now() - 900000;
+      currentLocal.forEach(loc => {
+        const key = loc.id || loc.regNo;
+        if (!mergedMap.has(key)) {
+          const locTime = loc.createdAt ? new Date(loc.createdAt).getTime() : Date.now();
+          if (locTime > fifteenMinutesAgo) {
+            mergedMap.set(key, loc);
+          }
+        }
+      });
+
+      const merged = Array.from(mergedMap.values());
       saveMarriageVerifications(merged);
       return merged;
     }

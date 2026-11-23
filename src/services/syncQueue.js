@@ -156,3 +156,20 @@ if (typeof window !== 'undefined') {
     }
   }, 15000);
 }
+
+/**
+ * Unified syncQueue object export for AppContext and components
+ */
+export const syncQueue = {
+  getPendingCount: () => getSyncQueue().length,
+  subscribe: (listener) => {
+    return subscribeSyncStatus((count) => {
+      listener('count_change', { count });
+      if (count === 0) {
+        listener('processing_end', { remaining: 0 });
+      }
+    });
+  },
+  enqueue: (action, payload) => enqueueSync(action, payload, payload?.id)
+};
+

@@ -51,6 +51,15 @@ export default function MarriageVerificationSection() {
   const [recordToEdit, setRecordToEdit] = useState(null);
   const [recordToDelete, setRecordToDelete] = useState(null);
 
+  // Jump to first page immediately when a new verification record is added
+  React.useEffect(() => {
+    const handleAdded = () => {
+      setCurrentPage(1);
+    };
+    window.addEventListener('shramiksetu:marriage_verify_added', handleAdded);
+    return () => window.removeEventListener('shramiksetu:marriage_verify_added', handleAdded);
+  }, []);
+
   // Filter records
   const filteredRecords = useMemo(() => {
     return (marriageVerifications || []).filter(item => {
@@ -369,9 +378,9 @@ export default function MarriageVerificationSection() {
                             {copiedText === item.regNo ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
                           </button>
                         </div>
-                        {item.mobile && (
+                        {(item.mobile || item.phone) && (
                           <span className="text-[10px] text-slate-400 font-sans block">
-                            Ph: {item.mobile}
+                            Ph: {item.mobile || item.phone}
                           </span>
                         )}
                       </td>
