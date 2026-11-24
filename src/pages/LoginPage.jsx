@@ -8,7 +8,9 @@ import {
   Eye,
   EyeOff,
   ArrowRight,
-  AlertCircle
+  AlertCircle,
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -23,6 +25,8 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [isShaking, setIsShaking] = useState(false);
 
   // Cursor Reactive Glow & Parallax
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -166,6 +170,8 @@ export default function LoginPage() {
     setError('');
 
     if (!username.trim() || !password.trim()) {
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 500);
       setError('Please enter both your Username and Password.');
       return;
     }
@@ -176,13 +182,21 @@ export default function LoginPage() {
       const res = await handleLogin(username, password, rememberMe);
 
       if (res.success) {
-        navigate(from, { replace: true });
+        setIsSuccess(true);
+        // Smooth 400ms micro-transition with green verified feedback before navigating
+        setTimeout(() => {
+          navigate(from, { replace: true });
+        }, 400);
       } else {
         setLoading(false);
+        setIsShaking(true);
+        setTimeout(() => setIsShaking(false), 500);
         setError(res.error || 'Invalid credentials. Please verify your login details.');
       }
     } catch (err) {
       setLoading(false);
+      setIsShaking(true);
+      setTimeout(() => setIsShaking(false), 500);
       setError('Authentication failed. Please verify credentials or backend connection.');
     }
   };
@@ -270,7 +284,9 @@ export default function LoginPage() {
         {/* ======================================================== */}
         {/* MODERN SIGN-IN CARD (Balanced Padding & Layout)          */}
         {/* ======================================================== */}
-        <div className="bg-white rounded-3xl shadow-[0_25px_65px_-12px_rgba(0,0,0,0.65),0_0_1px_1px_rgba(255,255,255,0.08)] border border-slate-100 text-slate-800 p-6 sm:p-8">
+        <div className={`bg-white rounded-3xl shadow-[0_25px_65px_-12px_rgba(0,0,0,0.65),0_0_1px_1px_rgba(255,255,255,0.08)] border border-slate-100 text-slate-800 p-6 sm:p-8 transition-all duration-300 ${
+          isShaking ? 'animate-shake-soft' : ''
+        } ${isSuccess ? 'scale-[1.01] shadow-[0_25px_70px_-10px_rgba(16,185,129,0.35)]' : ''}`}>
 
           {/* Logo & SHRAMIKSETU Header */}
           <div className="flex flex-col items-center text-center mb-6">
@@ -372,19 +388,30 @@ export default function LoginPage() {
             {/* Primary CTA: Cobalt Blue with Smooth Hover Light-Sweep Animation */}
             <button
               type="submit"
-              disabled={loading}
-              className="relative overflow-hidden w-full mt-3 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] disabled:opacity-60 transition-all shadow-md shadow-blue-600/25 cursor-pointer after:absolute after:inset-0 after:translate-x-[-100%] hover:after:translate-x-[100%] after:bg-gradient-to-r after:from-transparent after:via-white/20 after:to-transparent after:transition-transform after:duration-700"
+              disabled={loading || isSuccess}
+              className={`relative overflow-hidden w-full mt-3 flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white transition-all duration-300 shadow-md cursor-pointer active:scale-[0.98] ${
+                isSuccess
+                  ? 'bg-emerald-600 hover:bg-emerald-600 shadow-emerald-500/30 animate-success-pop'
+                  : loading
+                    ? 'bg-[#1D4ED8] shadow-blue-600/30 animate-glow-pulse'
+                    : 'bg-[#2563EB] hover:bg-[#1D4ED8] active:bg-[#1E40AF] shadow-blue-600/25 hover:shadow-lg hover:shadow-blue-600/35 hover:-translate-y-0.5'
+              } after:absolute after:inset-0 after:translate-x-[-100%] hover:after:translate-x-[100%] after:bg-gradient-to-r after:from-transparent after:via-white/20 after:to-transparent after:transition-transform after:duration-700`}
             >
-              {loading ? (
-                <>
+              {isSuccess ? (
+                <div className="flex items-center gap-2 animate-fade-scale">
+                  <CheckCircle2 className="w-4 h-4 text-white animate-bounce" />
+                  <span className="tracking-wide">Verified! Redirecting...</span>
+                </div>
+              ) : loading ? (
+                <div className="flex items-center gap-2">
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Signing In...</span>
-                </>
+                  <span className="tracking-wide">Signing In...</span>
+                </div>
               ) : (
-                <>
+                <div className="flex items-center gap-2 group">
                   <span>Sign In</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
+                  <ArrowRight className="w-4 h-4 transition-transform duration-200 group-hover:translate-x-1" />
+                </div>
               )}
             </button>
 

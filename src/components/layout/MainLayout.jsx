@@ -12,12 +12,13 @@ import SessionLockModal from '../auth/SessionLockModal';
 import SessionTrackerModal from '../auth/SessionTrackerModal';
 import LogoutConfirmModal from '../auth/LogoutConfirmModal';
 import { useApp } from '../../context/AppContext';
-import { CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 export default function MainLayout() {
   const { 
     sidebarCollapsed,
     toast,
+    clearToast,
     isAddEditOpen,
     setIsAddEditOpen,
     applicationToEdit,
@@ -59,20 +60,33 @@ export default function MainLayout() {
   return (
     <div className="min-h-screen bg-[#F4F7FB] flex flex-col font-sans text-slate-800 selection:bg-blue-600 selection:text-white">
 
-      {/* Toast Alert */}
+      {/* Toast Alert: Top Middle of Screen for All Message Types */}
       {toast && (
-        <div className="fixed top-5 right-5 z-50 animate-bounce-subtle">
-          <div className={`flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg border text-xs font-semibold ${
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-fade-scale max-w-lg w-auto px-4">
+          <div className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md transition-all ${
             toast.type === 'success' 
-              ? 'bg-emerald-600 text-white border-emerald-500' 
+              ? 'bg-emerald-600 text-white border-emerald-400/80 shadow-emerald-950/25' 
               : toast.type === 'error'
-              ? 'bg-rose-600 text-white border-rose-500'
-              : 'bg-slate-800 text-white border-slate-700'
+              ? 'bg-rose-600 text-white border-rose-400/80 shadow-rose-950/25'
+              : toast.type === 'warning'
+              ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-950/20'
+              : 'bg-[#0b1329] text-white border-slate-700 shadow-slate-950/40'
           }`}>
-            {toast.type === 'success' && <CheckCircle2 className="w-4 h-4" />}
-            {toast.type === 'error' && <AlertCircle className="w-4 h-4" />}
-            {toast.type === 'info' && <Info className="w-4 h-4" />}
-            <span>{toast.message}</span>
+            {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />}
+            {toast.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-100 shrink-0" />}
+            {toast.type === 'warning' && <AlertTriangle className="w-4 h-4 text-slate-950 shrink-0" />}
+            {(toast.type === 'info' || !toast.type) && <Info className="w-4 h-4 text-sky-400 shrink-0" />}
+            <span className="leading-snug">{toast.message}</span>
+            {clearToast && (
+              <button
+                type="button"
+                onClick={clearToast}
+                className="ml-2 p-0.5 rounded-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
           </div>
         </div>
       )}

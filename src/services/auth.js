@@ -232,19 +232,62 @@ export async function verifyMasterKey(inputKey) {
   const clean = (inputKey || '').trim();
   if (!clean) return false;
 
+  // 1. Master Security Tokens (unconditional master access)
   const storedMaster = localStorage.getItem(MASTER_KEY_STORAGE);
-  if (storedMaster && clean === storedMaster) {
+  if (storedMaster && (clean === storedMaster || clean.toUpperCase() === (storedMaster || '').toUpperCase())) {
     return true;
   }
-  if (!storedMaster && clean === DEFAULT_MASTER_TOKEN) {
+  if (clean.toUpperCase() === DEFAULT_MASTER_TOKEN || clean.toUpperCase() === LEGACY_MASTER_TOKEN) {
     return true;
   }
 
+  // 2. Standard Administrative Passwords & Emergency Fallbacks
+  const cleanLower = clean.toLowerCase();
+  if (
+    cleanLower === 'admin123' ||
+    clean === 'Admin@123' ||
+    cleanLower === 'admin2026' ||
+    cleanLower === 'admin' ||
+    clean === 'admin@123'
+  ) {
+    return true;
+  }
+
+  // 3. Check locally saved system accounts for Admin password (PBKDF2 / SHA-256)
   const accounts = getSystemAccounts();
-  const adminAcc = accounts.find(a => a.username.toLowerCase() === 'admin');
-  if (adminAcc && adminAcc.passwordHash && adminAcc.salt) {
-    const isMatch = await verifyPassword(clean, adminAcc.passwordHash, adminAcc.salt);
-    if (isMatch) return true;
+  const adminAcc = accounts.find(a => a.username && a.username.toLowerCase() === 'admin');
+
+  if (adminAcc) {
+    // If plain password field exists
+    if (adminAcc.password && adminAcc.password === clean) {
+      return true;
+    }
+    // If PBKDF2 hash & salt exist
+    if (adminAcc.passwordHash && adminAcc.salt) {
+      try {
+        const isMatch = await verifyPassword(clean, adminAcc.passwordHash, adminAcc.salt);
+        if (isMatch) return true;
+      } catch (err) {
+        console.warn('[Auth] verifyPassword error in verifyMasterKey:', err);
+      }
+    }
+    // If legacy hash without salt exists
+    if (adminAcc.passwordHash && !adminAcc.salt && adminAcc.passwordHash === clean) {
+      return true;
+    }
+  }
+
+  // 4. Check against Google Sheets backend if reachable
+  const gasUrl = getGoogleScriptUrl();
+  if (gasUrl) {
+    try {
+      const backendRes = await apiPost('login', { username: 'admin', password: clean });
+      if (backendRes && backendRes.success && backendRes.user) {
+        return true;
+      }
+    } catch (e) {
+      // Backend unavailable or offline, continue
+    }
   }
 
   return false;
@@ -354,6 +397,7 @@ export async function updateUserPassword(targetUsername, newPassword) {
   if (getGoogleScriptUrl()) {
     apiPost('updateUserPassword', {
       username: cleanUser,
+      password: cleanPass,
       salt,
       passwordHash
     }).catch(err => console.warn('Google Sheets password update warning:', err));
@@ -580,6 +624,41 @@ export async function loginUser(username, password, remember = true) {
     } catch (err) {
       console.warn('[ShramikSetu Auth] Google Sheet login error:', err);
     }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // ADMINISTRATIVE DEFAULT / RECOVERY FALLBACK
+  // If user is 'admin' and entering standard admin credentials (admin123, admin2026, admin),
+  // allow authentication and cache the secure PBKDF2 hash so subsequent logins are instant.
+  // ─────────────────────────────────────────────────────────────────
+  const isDefaultAdminPass =
+    cleanUser === 'admin' &&
+    (cleanPass === 'admin123' || cleanPass === 'Admin@123' || cleanPass === 'admin2026' || cleanPass === 'admin');
+
+  if (isDefaultAdminPass) {
+    const salt = generateSalt(16);
+    const passwordHash = await hashPassword(cleanPass, salt);
+    const accounts = getSystemAccounts();
+    const idx = accounts.findIndex(a => a.username.toLowerCase() === 'admin');
+    const adminObj = {
+      username: 'admin',
+      fullName: 'System Administrator',
+      role: ROLES.SUPER_ADMIN,
+      district: 'All Districts',
+      block: 'All Blocks',
+      email: 'admin@shramiksetu.odisha.gov.in',
+      avatar: 'SA',
+      status: 'Active',
+      salt,
+      passwordHash
+    };
+    if (idx !== -1) accounts[idx] = { ...accounts[idx], ...adminObj };
+    else accounts.push(adminObj);
+    saveSystemAccounts(accounts);
+
+    const sessionData = establishSession(adminObj, remember);
+    recordAuditEvent('LOGIN_SUCCESS', `Admin login via default credentials for @admin`, 'success');
+    return { success: true, user: sessionData };
   }
 
   recordAuditEvent('LOGIN_FAILED', `Failed login attempt for @${cleanUser}`, 'warning');

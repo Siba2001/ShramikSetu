@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import MainLayout from './components/layout/MainLayout';
 import ProtectedRoute from './components/auth/ProtectedRoute';
+import ErrorBoundary from './components/common/ErrorBoundary';
 
 // Lazy-loaded route pages for high-speed initial page loads and route-based code splitting
 const LoginPage = lazy(() => import('./pages/LoginPage'));
@@ -42,10 +43,11 @@ function PageSkeleton() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <Suspense fallback={<PageSkeleton />}>
-          <Routes>
+    <ErrorBoundary>
+      <AppProvider>
+        <BrowserRouter>
+          <Suspense fallback={<PageSkeleton />}>
+            <Routes>
             {/* Public Authentication & Security Routes */}
             <Route path="/login" element={<LoginPage />} />
             <Route path="/admin-security" element={<AdminSecurityPage />} />
@@ -157,5 +159,6 @@ export default function App() {
         </Suspense>
       </BrowserRouter>
     </AppProvider>
-  );
+  </ErrorBoundary>
+);
 }

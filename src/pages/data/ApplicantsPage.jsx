@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Users, Search, AlertCircle, Eye, Phone, CreditCard, Hash, MapPin, CheckCircle, Clock } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { formatDateOnly } from '../../utils/dateUtils';
 
 export default function ApplicantsPage() {
   const { applications, handleOpenViewModal } = useApp();
@@ -244,7 +245,7 @@ export default function ApplicantsPage() {
                           </span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          Track: {app.trackNo || 'None'} • Agent: {app.agent || 'Direct'} • Date: {(app.createdAt || '').slice(0, 10)}
+                          Track: {app.trackNo || 'None'} • Agent: {app.agent || 'Direct'} • Date: {formatDateOnly(app.createdAt || app.applicationDate)}
                         </div>
                       </div>
 

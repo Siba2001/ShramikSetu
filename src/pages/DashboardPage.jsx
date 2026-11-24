@@ -38,21 +38,23 @@ export default function DashboardPage() {
 
   const [trendView, setTrendView] = useState('Daily Trend');
 
-  // Renewal count combined
-  const renewalsCount = (stats.categoryCounts['Card Renewal'] || 0) + (stats.categoryCounts['Annual Contribution'] || 0);
-  const newCardsCount = stats.categoryCounts['New Card'] || 0;
-  const marriageCount = stats.categoryCounts['Marriage Benefit Apply'] || 0;
-  const maternityCount = stats.categoryCounts['Maternity Benefit Apply'] || 0;
-  const deathCount = stats.categoryCounts['Death Benefit Apply'] || 0;
-  const educationCount = stats.categoryCounts['Education Assistance Apply'] || 0;
+  // Safe Stats Navigation (prevents any undefined / null crashes)
+  const safeStats = stats || {};
+  const categoryCounts = safeStats.categoryCounts || {};
+  const renewalsCount = categoryCounts['Card Renewal'] || categoryCounts['Annual Contribution'] || 0;
+  const newCardsCount = categoryCounts['New Card'] || 0;
+  const marriageCount = categoryCounts['Marriage Benefit Apply'] || 0;
+  const maternityCount = categoryCounts['Maternity Benefit Apply'] || 0;
+  const deathCount = categoryCounts['Death Benefit Apply'] || 0;
+  const educationCount = categoryCounts['Education Assistance Apply'] || 0;
   const welfareClaimsCount = marriageCount + maternityCount + deathCount + educationCount;
 
   // Today's applications (Prioritizes server summary)
   const todayDateStr = new Date().toISOString().slice(0, 10);
   const todayCount = useMemo(() => {
-    if (stats.todayCount !== undefined && stats.todayCount > 0) return stats.todayCount;
-    return applications.filter(a => (a.createdAt || a.applicationDate || '').slice(0, 10) === todayDateStr).length;
-  }, [stats.todayCount, applications, todayDateStr]);
+    if (safeStats.todayCount !== undefined && safeStats.todayCount > 0) return safeStats.todayCount;
+    return (applications || []).filter(a => (a?.createdAt || a?.applicationDate || '').slice(0, 10) === todayDateStr).length;
+  }, [safeStats.todayCount, applications, todayDateStr]);
 
   // Category statistics with routes & colors for ShramikSetu
   const categories = useMemo(() => [
@@ -66,7 +68,7 @@ export default function DashboardPage() {
 
   // Scheme share breakdown for donut chart (100% Dynamic - 0 when empty)
   const schemeDonutData = useMemo(() => {
-    const total = stats.totalActive || applications.length;
+    const total = safeStats.totalActive || (applications || []).length;
 
     const items = [
       { label: 'New Card', count: newCardsCount, color: '#1E3A8A' },
@@ -85,24 +87,57 @@ export default function DashboardPage() {
       ...i,
       percent: Math.round((i.count / total) * 100)
     }));
-  }, [stats.totalActive, applications.length, newCardsCount, renewalsCount, welfareClaimsCount]);
+  }, [safeStats.totalActive, applications, newCardsCount, renewalsCount, welfareClaimsCount]);
 
-  // Daily Trend Data (Prioritizes server-side pre-aggregated daily data)
+  // Daily Trend Data (Prioritizes server-side pre-aggregated daily data with strict date validation)
   const trendData = useMemo(() => {
-    if (stats.recentDaysMap && Object.keys(stats.recentDaysMap).length > 0) {
-      const entries = Object.entries(stats.recentDaysMap).sort((a, b) => a[0].localeCompare(b[0]));
-      return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
+    const cleanTrendDate = (raw) => {
+      if (!raw || typeof raw !== 'string') return null;
+      const trimmed = raw.trim();
+      // Match ISO / YYYY-MM-DD
+      const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) {
+        return `${isoMatch[2]}-${isoMatch[3]}`; // MM-DD
+      }
+      // Match DD-MM-YYYY or DD/MM/YYYY
+      const dmyMatch = trimmed.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+      if (dmyMatch) {
+        return `${dmyMatch[2]}-${dmyMatch[1]}`;
+      }
+      // Try parsing as Date
+      const parsed = new Date(trimmed);
+      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${m}-${d}`;
+      }
+      return null; // Rejects garbage strings like '79797' or phone numbers
+    };
+
+    if (safeStats.recentDaysMap && Object.keys(safeStats.recentDaysMap).length > 0) {
+      const entries = Object.entries(safeStats.recentDaysMap)
+        .map(([date, cnt]) => {
+          const label = cleanTrendDate(date);
+          return label ? { rawDate: date, label, count: cnt } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+
+      if (entries.length > 0) {
+        return entries.slice(-10).map(e => ({ date: e.label, count: e.count }));
+      }
     }
 
-    if (applications.length === 0) {
+    if (!applications || applications.length === 0) {
       return [];
     }
 
     const map = {};
     applications.forEach(a => {
-      const d = (a.applicationDate || a.createdAt || '').slice(0, 10);
-      if (d) {
-        map[d] = (map[d] || 0) + 1;
+      const raw = a?.applicationDate || a?.createdAt || '';
+      const label = cleanTrendDate(raw);
+      if (label) {
+        map[label] = (map[label] || 0) + 1;
       }
     });
 
@@ -110,8 +145,8 @@ export default function DashboardPage() {
     if (entries.length === 0) {
       return [{ date: todayDateStr.slice(5), count: applications.length }];
     }
-    return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
-  }, [stats.recentDaysMap, applications, todayDateStr]);
+    return entries.slice(-10).map(([date, cnt]) => ({ date, count: cnt }));
+  }, [safeStats.recentDaysMap, applications, todayDateStr]);
 
   const maxTrendCount = useMemo(() => {
     if (trendData.length === 0) return 10;
@@ -120,20 +155,20 @@ export default function DashboardPage() {
 
   // Top blocks
   const topBlocks = useMemo(() => {
-    return Object.entries(stats.blockCounts || {})
+    return Object.entries(safeStats.blockCounts || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
-  }, [stats.blockCounts]);
+  }, [safeStats.blockCounts]);
 
   // Recent applications
   const recentApplications = useMemo(() => {
-    return [...applications].slice(0, 6);
+    return [...(applications || [])].slice(0, 6);
   }, [applications]);
 
   // SVG Donut calculation (circumference for r=36 is 2 * PI * 36 ≈ 226)
   const circumference = 226;
   const strokeSegments = useMemo(() => {
-    const total = stats.totalActive || applications.length;
+    const total = safeStats.totalActive || (applications || []).length;
     if (total === 0) {
       return [];
     }
@@ -150,7 +185,7 @@ export default function DashboardPage() {
           dashOffset: offset
         };
       });
-  }, [schemeDonutData, stats.totalActive, applications.length]);
+  }, [schemeDonutData, safeStats.totalActive, applications]);
 
   return (
     <div className="space-y-5 animate-fadeIn">
@@ -175,13 +210,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600">
-              {stats.totalActive}
+              {safeStats.totalActive || 0}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {stats.totalActive}
+              {safeStats.totalActive || 0}
             </div>
           </div>
 
@@ -271,13 +306,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600">
-              {stats.approved}
+              {safeStats.approved || 0}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {stats.approved}
+              {safeStats.approved || 0}
             </div>
           </div>
 
@@ -308,13 +343,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-600">
-              {stats.pending}
+              {safeStats.pending || 0}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {stats.pending}
+              {safeStats.pending || 0}
             </div>
           </div>
 
@@ -340,13 +375,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-fuchsia-50 text-fuchsia-600">
-              {stats.inProgress}
+              {safeStats.inProgress || 0}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {stats.inProgress}
+              {safeStats.inProgress || 0}
             </div>
           </div>
 
@@ -372,13 +407,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600">
-              {stats.queries}
+              {safeStats.queries || 0}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {stats.queries}
+              {safeStats.queries || 0}
             </div>
           </div>
 
@@ -563,7 +598,7 @@ export default function DashboardPage() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[11px] font-bold text-slate-400">Total</span>
-              <span className="text-xl font-black text-slate-900 font-mono">{stats.totalActive || applications.length}</span>
+              <span className="text-xl font-black text-slate-900 font-mono">{safeStats.totalActive || (applications || []).length}</span>
             </div>
           </div>
 
@@ -671,8 +706,8 @@ export default function DashboardPage() {
               </div>
             ) : (
               topBlocks.map(([blockName, count]) => {
-                const percent = stats.totalActive > 0
-                  ? Math.round((count / stats.totalActive) * 100)
+                const percent = (safeStats.totalActive || 0) > 0
+                  ? Math.round((count / safeStats.totalActive) * 100)
                   : 0;
 
                 return (

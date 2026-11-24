@@ -174,7 +174,11 @@ export default function ApplicationModulePage({
       if (!id && !trackNo) return;
       setServerData(prev => {
         if (!prev || !Array.isArray(prev.data)) return prev;
-        const filtered = prev.data.filter(item => (id && item.id !== id) && (!trackNo || item.trackNo !== trackNo));
+        const filtered = prev.data.filter(item => {
+          if (id && item.id === id) return false;
+          if (trackNo && item.trackNo === trackNo) return false;
+          return true;
+        });
         const prevSummary = prev?.summary;
         return {
           ...prev,
@@ -917,7 +921,11 @@ export default function ApplicationModulePage({
                                     if (ok) {
                                       setServerData(prev => {
                                         if (!prev || !Array.isArray(prev.data)) return prev;
-                                        const filtered = prev.data.filter(item => (app.id && item.id !== app.id) && (!app.trackNo || item.trackNo !== app.trackNo));
+                                        const filtered = prev.data.filter(item => {
+                                          if (app.id && item.id === app.id) return false;
+                                          if (app.trackNo && item.trackNo === app.trackNo) return false;
+                                          return true;
+                                        });
                                         return {
                                           ...prev,
                                           data: filtered,

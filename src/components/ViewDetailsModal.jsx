@@ -18,6 +18,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { formatDateOnly } from '../utils/dateUtils';
 
 export default function ViewDetailsModal() {
   const { 
@@ -179,7 +180,7 @@ export default function ViewDetailsModal() {
               <span className="text-[10.5px] font-bold text-slate-500 uppercase">Application Date</span>
               <div className="flex items-center gap-1.5 text-slate-700 font-medium font-mono">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>{app.createdAt ? app.createdAt.slice(0, 10) : 'N/A'}</span>
+                <span>{formatDateOnly(app.applicationDate || app.createdAt || app.date)}</span>
               </div>
             </div>
 

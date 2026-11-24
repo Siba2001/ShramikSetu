@@ -808,6 +808,24 @@ export async function fetchApplicationsPaged(params = {}) {
           fresh.data = fresh.data.filter(app => !isDeletedTombstone(app));
           setCachedPagedApplications(params, fresh);
           try {
+            const localApps = loadApplications();
+            let changed = false;
+            fresh.data.forEach(remoteApp => {
+              if (isDeletedTombstone(remoteApp)) return;
+              const idx = localApps.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
+              if (idx !== -1) {
+                localApps[idx] = { ...localApps[idx], ...remoteApp };
+                changed = true;
+              } else {
+                localApps.unshift(remoteApp);
+                changed = true;
+              }
+            });
+            if (changed) {
+              saveApplications(localApps);
+            }
+          } catch (e) { }
+          try {
             window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: fresh } }));
           } catch (e) {}
         }
@@ -840,6 +858,9 @@ export async function fetchApplicationsPaged(params = {}) {
           saveApplications(localApps);
         }
       } catch (e) { }
+      try {
+        window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: res } }));
+      } catch (e) {}
       return res;
     }
   } catch (err) {

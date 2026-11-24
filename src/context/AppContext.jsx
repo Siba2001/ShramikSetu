@@ -25,7 +25,8 @@ import {
   addMarriageVerification as dbAddMarriageVerification,
   updateMarriageVerification as dbUpdateMarriageVerification,
   deleteMarriageVerification as dbDeleteMarriageVerification,
-  fetchMarriageVerificationsFromBackend
+  fetchMarriageVerificationsFromBackend,
+  isDeletedTombstone
 } from '../services/db';
 import {
   getCurrentUser,
@@ -94,7 +95,11 @@ export function AppProvider({ children }) {
     setToast({ type, message });
     setTimeout(() => {
       setToast(null);
-    }, 4000);
+    }, 4500);
+  }, []);
+
+  const clearToast = useCallback(() => {
+    setToast(null);
   }, []);
 
   // Listen to background sync queue events
@@ -287,72 +292,92 @@ export function AppProvider({ children }) {
     return () => clearInterval(liveSyncTimer);
   }, [refreshData]);
 
-  // Computed Global Stats (Prioritizes server-side pre-aggregated summary; falls back to local memory)
-  const stats = useMemo(() => {
-    if (dashboardSummary && dashboardSummary.success) {
-      const rawCategoryCounts = dashboardSummary.categoryCounts || dashboardSummary.serviceStats || dashboardSummary.serviceCounts || {};
-      const rawBlockCounts = dashboardSummary.blockCounts || dashboardSummary.blockStats || dashboardSummary.blockDistribution || {};
-      const rawDistrictCounts = dashboardSummary.districtCounts || dashboardSummary.districtStats || dashboardSummary.districtDistribution || {};
+  // Real-time synchronization across modules and tabs
+  useEffect(() => {
+    const handleCreated = (e) => {
+      const record = e.detail?.record;
+      if (!record) return;
+      setApplications(prev => {
+        const next = [record, ...prev.filter(a => a.id !== record.id)];
+        saveApplications(next);
+        return next;
+      });
+    };
 
-      const renewalCount = (rawCategoryCounts['Card Renewal'] || 0) + 
-                           (rawCategoryCounts['card renewal'] || 0) + 
-                           (rawCategoryCounts['Card_Renewal'] || 0) +
-                           (rawCategoryCounts['renewal'] || 0);
-      const contributionCount = (rawCategoryCounts['Annual Contribution'] || 0) +
-                                (rawCategoryCounts['annual contribution'] || 0) +
-                                (rawCategoryCounts['Annual_Contribution'] || 0);
-      let effectiveRenewal = Math.max(renewalCount, contributionCount);
+    const handleUpdated = (e) => {
+      const record = e.detail?.record;
+      if (!record || !record.id) return;
+      setApplications(prev => {
+        const next = prev.map(a => a.id === record.id ? { ...a, ...record } : a);
+        saveApplications(next);
+        return next;
+      });
+    };
 
-      // Local merge: if server summary has 0 for card renewal but local memory has records, prioritize display
-      if (effectiveRenewal === 0 && Array.isArray(applications)) {
-        const localRenewals = applications.filter(a => {
-          const s = (a.serviceType || '').toLowerCase();
-          return s.includes('renewal') || s.includes('contribution');
-        }).length;
-        if (localRenewals > 0) effectiveRenewal = localRenewals;
+    const handleDeleted = (e) => {
+      const { id, trackNo } = e.detail || {};
+      setApplications(prev => {
+        const next = prev.filter(a => {
+          if (id && a.id === id) return false;
+          if (trackNo && a.trackNo === trackNo) return false;
+          return true;
+        });
+        saveApplications(next);
+        return next;
+      });
+    };
+
+    const handlePagedSync = (e) => {
+      const fetchedRecords = e.detail?.data?.data || e.detail?.records;
+      if (Array.isArray(fetchedRecords) && fetchedRecords.length > 0) {
+        setApplications(prev => {
+          let updated = [...prev];
+          let changed = false;
+          fetchedRecords.forEach(remoteApp => {
+            if (isDeletedTombstone(remoteApp)) return;
+            const idx = updated.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
+            if (idx !== -1) {
+              updated[idx] = { ...updated[idx], ...remoteApp };
+              changed = true;
+            } else {
+              updated.unshift(remoteApp);
+              changed = true;
+            }
+          });
+          if (changed) {
+            saveApplications(updated);
+            return updated;
+          }
+          return prev;
+        });
       }
+    };
 
-      const categoryCounts = {
-        'New Card': rawCategoryCounts['New Card'] || rawCategoryCounts['new card'] || rawCategoryCounts['New_Card'] || 0,
-        'Card Renewal': effectiveRenewal,
-        'Annual Contribution': effectiveRenewal,
-        'Marriage Benefit Apply': rawCategoryCounts['Marriage Benefit Apply'] || rawCategoryCounts['Marriage Benefit'] || rawCategoryCounts['Marriage_Benefit'] || 0,
-        'Maternity Benefit Apply': rawCategoryCounts['Maternity Benefit Apply'] || rawCategoryCounts['Maternity Benefit'] || rawCategoryCounts['Maternity_Benefit'] || 0,
-        'Death Benefit Apply': rawCategoryCounts['Death Benefit Apply'] || rawCategoryCounts['Death Benefit'] || rawCategoryCounts['Death_Benefit'] || 0,
-        'Education Assistance Apply': rawCategoryCounts['Education Assistance Apply'] || rawCategoryCounts['Education Grant'] || rawCategoryCounts['Education_Assistance'] || 0
-      };
+    const handleStorageChange = (e) => {
+      if (e.key === 'shramik_setu_applications_v2') {
+        setApplications(loadApplications());
+      }
+    };
 
-      const computedTotal = Math.max(
-        dashboardSummary.totalActive || 0,
-        categoryCounts['New Card'] + categoryCounts['Card Renewal'] + categoryCounts['Marriage Benefit Apply'] + categoryCounts['Maternity Benefit Apply'] + categoryCounts['Death Benefit Apply'] + categoryCounts['Education Assistance Apply']
-      );
+    window.addEventListener('shramiksetu:application_created', handleCreated);
+    window.addEventListener('shramiksetu:application_updated', handleUpdated);
+    window.addEventListener('shramiksetu:application_deleted', handleDeleted);
+    window.addEventListener('shramiksetu:paged_sync', handlePagedSync);
+    window.addEventListener('storage', handleStorageChange);
 
-      return {
-        totalActive: computedTotal,
-        pending: dashboardSummary.pending || 0,
-        inProgress: dashboardSummary.inProgress || 0,
-        queries: dashboardSummary.queries || 0,
-        approved: dashboardSummary.approved || 0,
-        bankRejections: dashboardSummary.bankRejections || 0,
-        completed: dashboardSummary.completed || 0,
-        categoryCounts,
-        blockCounts: rawBlockCounts,
-        districtCounts: rawDistrictCounts,
-        todayCount: dashboardSummary.todayCount || 0,
-        recentDaysMap: dashboardSummary.recentDaysMap || {}
-      };
-    }
+    return () => {
+      window.removeEventListener('shramiksetu:application_created', handleCreated);
+      window.removeEventListener('shramiksetu:application_updated', handleUpdated);
+      window.removeEventListener('shramiksetu:application_deleted', handleDeleted);
+      window.removeEventListener('shramiksetu:paged_sync', handlePagedSync);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
-    // Fallback: in-memory computation
-    const totalActive = applications.length;
-    const pending = applications.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
-    const inProgress = applications.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
-    const queries = applications.filter(a => a.status === 'Query Raised').length;
-    const approved = applications.filter(a => a.status === 'Approved').length;
-    const bankRejections = applications.filter(a => a.status === 'Bank Reject' || a.status === 'Rejected').length;
-    const completed = applications.filter(a => a.status === 'Completed').length;
-
-    const categoryCounts = {
+  // Computed Global Stats (Prioritizes server-side pre-aggregated summary; falls back to local memory with universal merge)
+  const stats = useMemo(() => {
+    const localApps = Array.isArray(applications) && applications.length > 0 ? applications : loadApplications();
+    const localCounts = {
       'New Card': 0,
       'Card Renewal': 0,
       'Annual Contribution': 0,
@@ -361,37 +386,158 @@ export function AppProvider({ children }) {
       'Death Benefit Apply': 0,
       'Education Assistance Apply': 0
     };
+    let localPending = 0;
+    let localInProgress = 0;
+    let localQueries = 0;
+    let localApproved = 0;
+    let localBankRejections = 0;
+    let localCompleted = 0;
+    const localBlockCounts = {};
+    const localDistrictCounts = {};
+    const localRecentDaysMap = {};
+    const todayDateStr = new Date().toISOString().slice(0, 10);
+    let localTodayCount = 0;
 
-    const blockCounts = {};
-    const districtCounts = {};
-
-    applications.forEach(a => {
-      let s = a.serviceType || 'New Card';
-      if (s === 'Card Renewal / Annual Contribution' || s.toLowerCase().includes('renewal') || s.toLowerCase().includes('contribution')) {
-        s = 'Card Renewal';
+    localApps.forEach(a => {
+      if (!a) return;
+      const s = (a.serviceType || '').toLowerCase();
+      if (s.includes('renewal') || s.includes('contribution')) {
+        localCounts['Card Renewal']++;
+        localCounts['Annual Contribution']++;
+      } else if (s.includes('marriage')) {
+        localCounts['Marriage Benefit Apply']++;
+      } else if (s.includes('maternity')) {
+        localCounts['Maternity Benefit Apply']++;
+      } else if (s.includes('death')) {
+        localCounts['Death Benefit Apply']++;
+      } else if (s.includes('education')) {
+        localCounts['Education Assistance Apply']++;
+      } else {
+        localCounts['New Card']++;
       }
-      categoryCounts[s] = (categoryCounts[s] || 0) + 1;
 
-      const b = a.block || 'General';
-      blockCounts[b] = (blockCounts[b] || 0) + 1;
+      const st = String(a.status || 'Pending').toLowerCase();
+      if (st === 'pending' || st === 'e-sign pending') localPending++;
+      else if (st === 'in progress' || st === 'query replied') localInProgress++;
+      else if (st === 'query raised') localQueries++;
+      else if (st === 'approved') localApproved++;
+      else if (st === 'bank reject' || st === 'bank rejection' || st === 'rejected') localBankRejections++;
+      else if (st === 'completed') localCompleted++;
 
-      const d = a.district || 'Ganjam';
-      districtCounts[d] = (districtCounts[d] || 0) + 1;
+      if (a.block) {
+        localBlockCounts[a.block] = (localBlockCounts[a.block] || 0) + 1;
+      }
+      if (a.district) {
+        localDistrictCounts[a.district] = (localDistrictCounts[a.district] || 0) + 1;
+      }
+
+      const rawDate = String(a.createdAt || a.applicationDate || '').trim();
+      const dateStr = rawDate.slice(0, 10);
+      if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        localRecentDaysMap[dateStr] = (localRecentDaysMap[dateStr] || 0) + 1;
+        if (dateStr === todayDateStr) {
+          localTodayCount++;
+        }
+      }
     });
 
+    if (dashboardSummary && dashboardSummary.success) {
+      const rawCategoryCounts = dashboardSummary.categoryCounts || dashboardSummary.serviceStats || dashboardSummary.serviceCounts || {};
+      const rawBlockCounts = dashboardSummary.blockCounts || dashboardSummary.blockStats || dashboardSummary.blockDistribution || {};
+      const rawDistrictCounts = dashboardSummary.districtCounts || dashboardSummary.districtStats || dashboardSummary.districtDistribution || {};
+
+      const renewalServerCount = (rawCategoryCounts['Card Renewal'] || 0) + 
+                                 (rawCategoryCounts['card renewal'] || 0) + 
+                                 (rawCategoryCounts['Card_Renewal'] || 0) +
+                                 (rawCategoryCounts['renewal'] || 0);
+      const contributionServerCount = (rawCategoryCounts['Annual Contribution'] || 0) +
+                                      (rawCategoryCounts['annual contribution'] || 0) +
+                                      (rawCategoryCounts['Annual_Contribution'] || 0);
+      const effectiveRenewalServer = Math.max(renewalServerCount, contributionServerCount);
+
+      const effectiveNewCard = Math.max(
+        rawCategoryCounts['New Card'] || rawCategoryCounts['new card'] || rawCategoryCounts['New_Card'] || 0,
+        localCounts['New Card']
+      );
+      const effectiveRenewal = Math.max(effectiveRenewalServer, localCounts['Card Renewal']);
+      const effectiveMarriage = Math.max(
+        rawCategoryCounts['Marriage Benefit Apply'] || rawCategoryCounts['Marriage Benefit'] || rawCategoryCounts['Marriage_Benefit'] || 0,
+        localCounts['Marriage Benefit Apply']
+      );
+      const effectiveMaternity = Math.max(
+        rawCategoryCounts['Maternity Benefit Apply'] || rawCategoryCounts['Maternity Benefit'] || rawCategoryCounts['Maternity_Benefit'] || 0,
+        localCounts['Maternity Benefit Apply']
+      );
+      const effectiveDeath = Math.max(
+        rawCategoryCounts['Death Benefit Apply'] || rawCategoryCounts['Death Benefit'] || rawCategoryCounts['Death_Benefit'] || 0,
+        localCounts['Death Benefit Apply']
+      );
+      const effectiveEducation = Math.max(
+        rawCategoryCounts['Education Assistance Apply'] || rawCategoryCounts['Education Grant'] || rawCategoryCounts['Education_Assistance'] || 0,
+        localCounts['Education Assistance Apply']
+      );
+
+      const categoryCounts = {
+        'New Card': effectiveNewCard,
+        'Card Renewal': effectiveRenewal,
+        'Annual Contribution': effectiveRenewal,
+        'Marriage Benefit Apply': effectiveMarriage,
+        'Maternity Benefit Apply': effectiveMaternity,
+        'Death Benefit Apply': effectiveDeath,
+        'Education Assistance Apply': effectiveEducation
+      };
+
+      const computedTotal = Math.max(
+        dashboardSummary.totalActive || 0,
+        localApps.length,
+        effectiveNewCard + effectiveRenewal + effectiveMarriage + effectiveMaternity + effectiveDeath + effectiveEducation
+      );
+
+      const mergedBlockCounts = { ...rawBlockCounts };
+      Object.entries(localBlockCounts).forEach(([b, count]) => {
+        mergedBlockCounts[b] = Math.max(mergedBlockCounts[b] || 0, count);
+      });
+
+      const mergedDistrictCounts = { ...rawDistrictCounts };
+      Object.entries(localDistrictCounts).forEach(([d, count]) => {
+        mergedDistrictCounts[d] = Math.max(mergedDistrictCounts[d] || 0, count);
+      });
+
+      const mergedRecentDays = { ...(dashboardSummary.recentDaysMap || {}) };
+      Object.entries(localRecentDaysMap).forEach(([dt, count]) => {
+        mergedRecentDays[dt] = Math.max(mergedRecentDays[dt] || 0, count);
+      });
+
+      return {
+        totalActive: computedTotal,
+        pending: Math.max(dashboardSummary.pending || 0, localPending),
+        inProgress: Math.max(dashboardSummary.inProgress || 0, localInProgress),
+        queries: Math.max(dashboardSummary.queries || 0, localQueries),
+        approved: Math.max(dashboardSummary.approved || 0, localApproved),
+        bankRejections: Math.max(dashboardSummary.bankRejections || 0, localBankRejections),
+        completed: Math.max(dashboardSummary.completed || 0, localCompleted),
+        categoryCounts,
+        blockCounts: mergedBlockCounts,
+        districtCounts: mergedDistrictCounts,
+        todayCount: Math.max(dashboardSummary.todayCount || 0, localTodayCount),
+        recentDaysMap: mergedRecentDays
+      };
+    }
+
+    // Fallback: in-memory computation
     return {
-      totalActive,
-      pending,
-      inProgress,
-      queries,
-      approved,
-      bankRejections,
-      completed,
-      categoryCounts,
-      blockCounts,
-      districtCounts,
-      todayCount: 0,
-      recentDaysMap: {}
+      totalActive: localApps.length,
+      pending: localPending,
+      inProgress: localInProgress,
+      queries: localQueries,
+      approved: localApproved,
+      bankRejections: localBankRejections,
+      completed: localCompleted,
+      categoryCounts: localCounts,
+      blockCounts: localBlockCounts,
+      districtCounts: localDistrictCounts,
+      todayCount: localTodayCount,
+      recentDaysMap: localRecentDaysMap
     };
   }, [dashboardSummary, applications]);
 
@@ -506,8 +652,40 @@ export function AppProvider({ children }) {
   const handleDeleteApplication = async (id, extra = {}) => {
     try {
       // 1. Instant 0ms optimistic local state purge
-      setApplications(prev => prev.filter(a => (id && a.id !== id) && (!extra.trackNo || a.trackNo !== extra.trackNo)));
+      const filterOut = (list) => list.filter(a => {
+        if (id && a.id === id) return false;
+        if (extra.trackNo && a.trackNo === extra.trackNo) return false;
+        if (extra.cardNo && a.cardNo && a.cardNo === extra.cardNo) return false;
+        if (extra.aadhaarNo && a.aadhaarNo && a.aadhaarNo === extra.aadhaarNo) return false;
+        return true;
+      });
+
+      setApplications(prev => {
+        const next = filterOut(prev);
+        saveApplications(next);
+        return next;
+      });
       clearPagedApplicationsCache();
+
+      // Decrement dashboard stats optimistically (0ms)
+      setDashboardSummary(prev => {
+        if (!prev) return prev;
+        const sType = extra.serviceType || 'New Card';
+        const newCatCounts = { ...(prev.categoryCounts || {}) };
+        if (newCatCounts[sType]) {
+          newCatCounts[sType] = Math.max(0, newCatCounts[sType] - 1);
+        }
+        if (sType === 'Card Renewal' || sType === 'Annual Contribution') {
+          newCatCounts['Card Renewal'] = Math.max(0, (newCatCounts['Card Renewal'] || 1) - 1);
+          newCatCounts['Annual Contribution'] = newCatCounts['Card Renewal'];
+        }
+        return {
+          ...prev,
+          totalActive: Math.max(0, (prev.totalActive || 1) - 1),
+          pending: Math.max(0, (prev.pending || 1) - 1),
+          categoryCounts: newCatCounts
+        };
+      });
 
       // 2. Broadcast delete to active module tables immediately (0ms)
       try {
@@ -759,6 +937,7 @@ export function AppProvider({ children }) {
         setMobileSidebarOpen,
         toast,
         showToast,
+        clearToast,
 
         // Modals
         isAddEditOpen,
