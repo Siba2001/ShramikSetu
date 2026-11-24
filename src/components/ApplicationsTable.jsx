@@ -541,6 +541,9 @@ export default function ApplicationsTable({
                               onDeleteApplication(app.id, {
                                 trackNo: app.trackNo,
                                 cardNo: app.cardNo,
+                                aadhaarNo: app.aadhaarNo,
+                                applicantName: app.applicantName,
+                                block: app.block,
                                 serviceType: app.serviceType
                               });
                             }

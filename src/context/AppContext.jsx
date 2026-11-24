@@ -519,7 +519,7 @@ export function AppProvider({ children }) {
       showToast('success', 'Application deleted successfully.');
 
       // 3. Non-blocking asynchronous cloud deletion
-      deleteApplication(id, extra);
+      dbDeleteApplication(id, extra);
       refreshDashboardSummary(true);
       return true;
     } catch (e) {

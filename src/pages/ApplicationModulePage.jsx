@@ -400,6 +400,69 @@ export default function ApplicationModulePage({
     }
   };
 
+  // Helper to retrieve records honoring active filters and checkbox selections
+  const getRecordsToExport = () => {
+    if (selectedIds.size > 0) {
+      const sourceList = (localFilteredList && localFilteredList.length > 0) ? localFilteredList : (displayRows || []);
+      const selectedList = sourceList.filter(r => selectedIds.has(r.id));
+      if (selectedList.length > 0) return selectedList;
+    }
+    if (localFilteredList && localFilteredList.length > 0) {
+      return localFilteredList;
+    }
+    return displayRows || [];
+  };
+
+  const handleDownloadPDF = () => {
+    const recordsToExport = getRecordsToExport();
+    if (!recordsToExport || recordsToExport.length === 0) {
+      showToast('warning', 'No records found matching current filters to export.');
+      return;
+    }
+    try {
+      const res = exportBlockWisePDF(recordsToExport, {
+        block: selectedBlock,
+        service: serviceKey,
+        status: selectedStatus,
+        agent: selectedAgent,
+        searchTerm: debouncedSearch,
+        fromDate,
+        toDate,
+        alreadyFiltered: true,
+        maskPII: false
+      });
+      showToast('success', `Exported ${res.count} records to official PDF: ${res.filename}`);
+    } catch (err) {
+      console.error('PDF Export Error:', err);
+      showToast('error', `Failed to generate PDF: ${err.message || 'Error creating document'}`);
+    }
+  };
+
+  const handleDownloadExcel = () => {
+    const recordsToExport = getRecordsToExport();
+    if (!recordsToExport || recordsToExport.length === 0) {
+      showToast('warning', 'No records found matching current filters to export.');
+      return;
+    }
+    try {
+      const res = exportBlockWiseExcel(recordsToExport, {
+        block: selectedBlock,
+        service: serviceKey,
+        status: selectedStatus,
+        agent: selectedAgent,
+        searchTerm: debouncedSearch,
+        fromDate,
+        toDate,
+        alreadyFiltered: true,
+        maskPII: false
+      });
+      showToast('success', `Exported ${res.count} records to Excel: ${res.filename}`);
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+      showToast('error', `Failed to export Excel: ${err.message || 'Error creating document'}`);
+    }
+  };
+
   return (
     <div className="space-y-5 animate-fadeIn">
 
@@ -494,17 +557,9 @@ export default function ApplicationModulePage({
               {/* Download PDF Button */}
               <button
                 type="button"
-                onClick={() => {
-                  exportBlockWisePDF(displayRows, {
-                    block: selectedBlock,
-                    service: serviceKey,
-                    status: selectedStatus,
-                    maskPII: false
-                  });
-                  showToast('success', `Generated ${title} Block-wise PDF Report.`);
-                }}
+                onClick={handleDownloadPDF}
                 className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100/80 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                title={`Download ${title} PDF report formatted by block`}
+                title={`Download ${title} official PDF register matching current filters`}
               >
                 <Printer className="w-4 h-4 text-rose-600" />
                 <span>Download PDF</span>
@@ -513,17 +568,9 @@ export default function ApplicationModulePage({
               {/* Download Excel Button */}
               <button
                 type="button"
-                onClick={() => {
-                  exportBlockWiseExcel(displayRows, {
-                    block: selectedBlock,
-                    service: serviceKey,
-                    status: selectedStatus,
-                    maskPII: false
-                  });
-                  showToast('success', `Exported ${title} Block-wise Excel.`);
-                }}
+                onClick={handleDownloadExcel}
                 className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 border border-emerald-200 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                title={`Download official Excel sheet for ${title}`}
+                title={`Download official Excel sheet for ${title} matching current filters`}
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>Download Excel</span>
@@ -862,6 +909,9 @@ export default function ApplicationModulePage({
                                     const ok = await handleDeleteApplication(app.id, {
                                       trackNo: app.trackNo,
                                       cardNo: app.cardNo,
+                                      aadhaarNo: app.aadhaarNo,
+                                      applicantName: app.applicantName,
+                                      block: app.block,
                                       serviceType: app.serviceType || serviceKey
                                     });
                                     if (ok) {
@@ -879,7 +929,6 @@ export default function ApplicationModulePage({
                                           } : prev.summary
                                         };
                                       });
-                                      loadPagedRecords(true);
                                     }
                                   }
                                 }}

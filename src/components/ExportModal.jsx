@@ -61,17 +61,17 @@ export default function ExportModal({ isOpen, onClose, applications }) {
       let result = null;
 
       if (exportFormat === 'pdf') {
-        // Block-wise Official PDF Report (Omits Agent Name, omits redundant Block column, has Block Header)
+        // Block-wise Official PDF Report
         result = exportBlockWisePDF(applications, {
           block: selectedBlock,
-          service: selectedService !== 'All' ? selectedService : 'New Card',
+          service: selectedService,
           status: selectedStatus
         });
       } else if (exportFormat === 'xlsx') {
-        // Block-wise Official Excel Report (Row 1 Header: e.g. "[BLOCK] [MODULE] LIST", omits Agent)
+        // Block-wise Official Excel Report
         result = exportBlockWiseExcel(applications, {
           block: selectedBlock,
-          service: selectedService !== 'All' ? selectedService : 'New Card',
+          service: selectedService,
           status: selectedStatus
         });
       } else {

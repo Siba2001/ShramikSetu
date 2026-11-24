@@ -82,8 +82,62 @@ export function normalizeApplication(app) {
 }
 
 /**
+ * =========================================================================
+ * PERSISTENT DELETED TOMBSTONE REGISTRY (Zero-Resurrection Architecture)
+ * Tracks deleted IDs, Tracking Numbers, Card Numbers, and Aadhaar Numbers.
+ * Prevents cloud sync or cached responses from ever resurrecting deleted records.
+ * =========================================================================
+ */
+const DELETED_TOMBSTONE_KEY = 'shramiksetu_deleted_tombstones';
+
+export function getDeletedTombstones() {
+  try {
+    const raw = localStorage.getItem(DELETED_TOMBSTONE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+export function recordDeletedTombstone(identifiers = {}) {
+  try {
+    const list = getDeletedTombstones();
+    const entry = {
+      id: identifiers.id ? String(identifiers.id).trim().toLowerCase() : null,
+      trackNo: identifiers.trackNo ? String(identifiers.trackNo).trim().toLowerCase() : null,
+      cardNo: identifiers.cardNo ? String(identifiers.cardNo).trim().toLowerCase() : null,
+      aadhaarNo: identifiers.aadhaarNo ? String(identifiers.aadhaarNo).trim().replace(/\s+/g, '') : null,
+      timestamp: Date.now()
+    };
+    list.unshift(entry);
+    // Keep max 500 tombstones for 14 days
+    const filtered = list.filter(e => Date.now() - e.timestamp < 14 * 24 * 3600 * 1000).slice(0, 500);
+    localStorage.setItem(DELETED_TOMBSTONE_KEY, JSON.stringify(filtered));
+  } catch (e) {}
+}
+
+export function isDeletedTombstone(record) {
+  if (!record) return false;
+  const tombstones = getDeletedTombstones();
+  if (!tombstones || tombstones.length === 0) return false;
+
+  const recId = record.id ? String(record.id).trim().toLowerCase() : '';
+  const recTrack = record.trackNo ? String(record.trackNo).trim().toLowerCase() : '';
+  const recCard = record.cardNo ? String(record.cardNo).trim().toLowerCase() : '';
+  const recAadh = record.aadhaarNo ? String(record.aadhaarNo).trim().replace(/\s+/g, '') : '';
+
+  return tombstones.some(t => {
+    if (t.id && recId && t.id === recId) return true;
+    if (t.trackNo && recTrack && (t.trackNo === recTrack || t.trackNo.replace(/\s+/g, '') === recTrack.replace(/\s+/g, ''))) return true;
+    if (t.cardNo && recCard && t.cardNo === recCard) return true;
+    if (t.aadhaarNo && recAadh && t.aadhaarNo === recAadh) return true;
+    return false;
+  });
+}
+
+/**
  * Load all active applications from LocalStorage
- * Automatically filters out any legacy dummy/test records
+ * Automatically filters out any legacy dummy/test records and tombstoned deleted items
  */
 export function loadApplications() {
   try {
@@ -95,9 +149,10 @@ export function loadApplications() {
     const list = JSON.parse(raw);
     if (!Array.isArray(list)) return [];
 
-    // Automatically purge old phantom/dummy records left over from earlier tests
+    // Automatically purge old phantom/dummy records and deleted tombstones
     const cleaned = list.filter(app => {
       if (!app) return false;
+      if (isDeletedTombstone(app)) return false;
       const agentLower = (app.agent || '').trim().toLowerCase();
       const trackLower = (app.trackNo || '').trim().toLowerCase();
       if (trackLower === 'asdf' || trackLower === 'test' || trackLower === 'test1234') return false;
@@ -418,10 +473,10 @@ export async function updateApplication(id, updates) {
 }
 
 /**
- * Fast Local-First Delete with Asynchronous Background Cloud Sync (DIVY-IMPEX Architecture)
+ * Fast Local-First Delete with Asynchronous Background Cloud Sync & Tombstone Protection
  */
 export async function deleteApplication(id, extra = {}) {
-  // 1. Instant local storage purge
+  // 1. Locate app for full identifier extraction
   const apps = loadApplications();
   const index = apps.findIndex(a => (id && a.id === id) || (extra.trackNo && a.trackNo === extra.trackNo));
   let targetApp = null;
@@ -431,17 +486,35 @@ export async function deleteApplication(id, extra = {}) {
     saveApplications(apps);
   }
 
-  // 2. Clear paged memory and session caches immediately
+  const trackNo = extra.trackNo || targetApp?.trackNo || null;
+  const cardNo = extra.cardNo || targetApp?.cardNo || null;
+  const aadhaarNo = extra.aadhaarNo || targetApp?.aadhaarNo || null;
+  const applicantName = extra.applicantName || targetApp?.applicantName || null;
+  const block = extra.block || targetApp?.block || null;
+  const serviceType = extra.serviceType || targetApp?.serviceType || null;
+
+  // 2. Record in persistent tombstone registry (guarantees zero resurrection)
+  recordDeletedTombstone({
+    id,
+    trackNo,
+    cardNo,
+    aadhaarNo
+  });
+
+  // 3. Clear paged memory and session caches immediately
   clearPagedApplicationsCache();
 
   const payload = {
     id: id || targetApp?.id,
-    trackNo: extra.trackNo || targetApp?.trackNo,
-    cardNo: extra.cardNo || targetApp?.cardNo,
-    serviceType: extra.serviceType || targetApp?.serviceType
+    trackNo,
+    cardNo,
+    aadhaarNo,
+    applicantName,
+    block,
+    serviceType
   };
 
-  // 3. Fire-and-forget background push to Google Apps Script (non-blocking)
+  // 4. Background push to Google Apps Script
   apiPost('delete', payload).catch(err => {
     console.warn('Google Sheet background delete notice:', err);
   });
@@ -732,6 +805,7 @@ export async function fetchApplicationsPaged(params = {}) {
     if (isStale) {
       fetchApplicationsPagedApi(params).then(fresh => {
         if (fresh && fresh.success && Array.isArray(fresh.data)) {
+          fresh.data = fresh.data.filter(app => !isDeletedTombstone(app));
           setCachedPagedApplications(params, fresh);
           try {
             window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: fresh } }));
@@ -745,12 +819,14 @@ export async function fetchApplicationsPaged(params = {}) {
   try {
     const res = await fetchApplicationsPagedApi(params);
     if (res && res.success && Array.isArray(res.data)) {
+      res.data = res.data.filter(app => !isDeletedTombstone(app));
       setCachedPagedApplications(params, res);
       // Keep local storage synchronized with fetched live records
       try {
         const localApps = loadApplications();
         let changed = false;
         res.data.forEach(remoteApp => {
+          if (isDeletedTombstone(remoteApp)) return;
           const idx = localApps.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
           if (idx !== -1) {
             localApps[idx] = { ...localApps[idx], ...remoteApp };
@@ -840,6 +916,7 @@ export async function fetchFromGoogleSheet(serviceType = null) {
 
       const validRemote = remoteApps.filter(app => {
         if (!app) return false;
+        if (isDeletedTombstone(app)) return false;
         const trackLower = (app.trackNo || '').trim().toLowerCase();
         const agentLower = (app.agent || '').trim().toLowerCase();
         if (trackLower === 'asdf' || trackLower === 'test') return false;

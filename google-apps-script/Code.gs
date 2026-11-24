@@ -1951,10 +1951,13 @@ function processPostRequest(postData) {
         var delId = String(payload.id || "").trim();
         var delTrack = String(payload.trackNo || "").trim();
         var delCard = String(payload.cardNo || "").trim();
+        var delAadhaar = String(payload.aadhaarNo || "").trim().replace(/\s+/g, '');
+        var delName = String(payload.applicantName || "").trim().toLowerCase();
+        var delBlock = String(payload.block || "").trim().toLowerCase();
         var delService = payload.serviceType ? getSheetNameForService(payload.serviceType) : null;
 
-        if (!delId && !delTrack && !delCard) {
-          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record ID or Tracking No is required." });
+        if (!delId && !delTrack && !delCard && !delAadhaar && !delName) {
+          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record identifier (Tracking No, ID, Card No, or Aadhaar) is required." });
         }
 
         var candidateSheets = [];
@@ -1971,24 +1974,64 @@ function processPostRequest(postData) {
           if (dData.length <= 1) continue;
 
           var dHeaders = dData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-          var dIdIdx = dHeaders.indexOf("id") !== -1 ? dHeaders.indexOf("id") : 0;
-          var dTrackIdx = dHeaders.findIndex(function (h) { return h === "tracking no" || h === "track no"; });
-          var dCardIdx = dHeaders.findIndex(function (h) { return h === "nirman shramik card no" || h === "card no"; });
+          var dIdIdx = dHeaders.indexOf("id");
+          var dTrackIdx = dHeaders.findIndex(function (h) { 
+            return h === "tracking no" || h === "track no" || h === "tracking number" || h === "track number" || h === "tracking" || h.indexOf("track") !== -1; 
+          });
+          var dCardIdx = dHeaders.findIndex(function (h) { 
+            return h === "nirman shramik card no" || h === "card no" || h === "shramik card no" || h === "card number" || h.indexOf("card") !== -1; 
+          });
+          var dAadhaarIdx = dHeaders.findIndex(function (h) {
+            return h === "aadhaar no" || h === "aadhaar number" || h === "aadhaar" || h === "aadhar no" || h.indexOf("aadhaar") !== -1 || h.indexOf("aadhar") !== -1;
+          });
+          var dNameIdx = dHeaders.findIndex(function (h) {
+            return h === "applicant name" || h === "card holder name" || h === "beneficiary name" || h === "name" || h.indexOf("name") !== -1;
+          });
           var distColIdx = dHeaders.indexOf("district");
           var blockColIdx = dHeaders.indexOf("block");
 
           for (var dr = 1; dr < dData.length; dr++) {
             var rowMatch = false;
-            var rowId = String(dData[dr][dIdIdx] || "").trim();
-            var rowTrack = dTrackIdx !== -1 ? String(dData[dr][dTrackIdx] || "").trim() : "";
-            var rowCard = dCardIdx !== -1 ? String(dData[dr][dCardIdx] || "").trim() : "";
 
-            if (delId && rowId && rowId.toLowerCase() === delId.toLowerCase()) {
-              rowMatch = true;
-            } else if (delTrack && rowTrack && rowTrack.toLowerCase() === delTrack.toLowerCase()) {
-              rowMatch = true;
-            } else if (!delId && !delTrack && delCard && rowCard && rowCard.toLowerCase() === delCard.toLowerCase()) {
-              rowMatch = true;
+            // 1. Primary check: Unique Tracking Number (most specific)
+            if (delTrack && dTrackIdx !== -1) {
+              var rowTrack = String(dData[dr][dTrackIdx] || "").trim();
+              if (rowTrack && (rowTrack.toLowerCase() === delTrack.toLowerCase() || rowTrack.replace(/\s+/g, '') === delTrack.replace(/\s+/g, ''))) {
+                rowMatch = true;
+              }
+            }
+
+            // 2. Exact ID match (only if ID column actually exists in sheet)
+            if (!rowMatch && delId && dIdIdx !== -1) {
+              var rowId = String(dData[dr][dIdIdx] || "").trim();
+              if (rowId && rowId.toLowerCase() === delId.toLowerCase()) {
+                rowMatch = true;
+              }
+            }
+
+            // 3. Card Number match
+            if (!rowMatch && delCard && dCardIdx !== -1) {
+              var rowCard = String(dData[dr][dCardIdx] || "").trim();
+              if (rowCard && rowCard.toLowerCase() === delCard.toLowerCase()) {
+                rowMatch = true;
+              }
+            }
+
+            // 4. Aadhaar Number match
+            if (!rowMatch && delAadhaar && dAadhaarIdx !== -1) {
+              var rowAadh = String(dData[dr][dAadhaarIdx] || "").trim().replace(/\s+/g, '');
+              if (rowAadh && rowAadh === delAadhaar) {
+                rowMatch = true;
+              }
+            }
+
+            // 5. Name + Block composite match
+            if (!rowMatch && delName && delBlock && dNameIdx !== -1 && blockColIdx !== -1) {
+              var rowName = String(dData[dr][dNameIdx] || "").trim().toLowerCase();
+              var rowBlock = String(dData[dr][blockColIdx] || "").trim().toLowerCase();
+              if (rowName === delName && rowBlock === delBlock) {
+                rowMatch = true;
+              }
             }
 
             if (rowMatch) {
@@ -2003,7 +2046,7 @@ function processPostRequest(postData) {
 
               dSheet.deleteRow(dr + 1);
               bumpDataEpoch();
-              logAuditDirect("APPLICATION_DELETED", "Deleted application " + (delId || delTrack || delCard), candidateSheets[m], delId || delTrack || delCard, "Success", session.username, session.role);
+              logAuditDirect("APPLICATION_DELETED", "Deleted application " + (delTrack || delId || delCard || delName), candidateSheets[m], delTrack || delId || delCard, "Success", session.username, session.role);
               return sendJsonResponse({ success: true, message: "Record removed successfully." });
             }
           }
