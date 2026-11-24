@@ -907,6 +907,23 @@ function validateDateString(val) {
   return s;
 }
 
+function formatCellDate(cellVal) {
+  if (!cellVal) return "";
+  if (cellVal instanceof Date) {
+    return Utilities.formatDate(cellVal, "Asia/Kolkata", "yyyy-MM-dd");
+  }
+  var s = String(cellVal).trim();
+  if (s.indexOf("GMT") !== -1 || s.indexOf("India Standard Time") !== -1) {
+    try {
+      var d = new Date(s);
+      if (!isNaN(d.getTime())) {
+        return Utilities.formatDate(d, "Asia/Kolkata", "yyyy-MM-dd");
+      }
+    } catch (e) {}
+  }
+  return s;
+}
+
 function validateStatusValue(status) {
   if (!status) return "Pending";
   var s = String(status).trim();
@@ -1699,10 +1716,10 @@ function processPostRequest(postData) {
                 district: recDist,
                 block: recBlock,
                 certifyingAuthority: String(row[vHeaders.indexOf("certifying authority")] || row[7] || ""),
-                marriageCertDate: String(row[vHeaders.indexOf("marriage certificate regis date")] || row[8] || ""),
+                marriageCertDate: formatCellDate(row[vHeaders.indexOf("marriage certificate regis date")] || row[8]),
                 marriageRegdNo: String(row[vHeaders.indexOf("marriage regd. no")] || row[9] || ""),
                 marriageFor: String(row[vHeaders.indexOf("marriage for")] || row[10] || "Daughter"),
-                dateOfMarriage: String(row[vHeaders.indexOf("date of marriage")] || row[11] || ""),
+                dateOfMarriage: formatCellDate(row[vHeaders.indexOf("date of marriage")] || row[11]),
                 groomName: String(row[vHeaders.indexOf("name of groom")] || row[12] || ""),
                 daughterName: String(row[vHeaders.indexOf("name of daughter")] || row[13] || ""),
                 remarks: String(row[vHeaders.indexOf("remarks")] || row[14] || ""),

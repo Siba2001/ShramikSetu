@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Heart, Calendar, FileText, User, MapPin, Phone, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { toDateInputValue } from '../../utils/dateUtils';
 
 export default function AddMarriageVerificationModal({
   isOpen,
@@ -45,10 +46,10 @@ export default function AddMarriageVerificationModal({
         mobile: recordToEdit.mobile || recordToEdit.phone || '',
         block: recordToEdit.block || ((defaultBlock && defaultBlock !== 'All') ? defaultBlock : (allBlocksList?.[0] || '')),
         certifyingAuthority: recordToEdit.certifyingAuthority || 'Sub-Registrar',
-        marriageCertDate: recordToEdit.marriageCertDate || '',
+        marriageCertDate: toDateInputValue(recordToEdit.marriageCertDate),
         marriageRegdNo: recordToEdit.marriageRegdNo || '',
         marriageFor: recordToEdit.marriageFor || 'Daughter',
-        dateOfMarriage: recordToEdit.dateOfMarriage || '',
+        dateOfMarriage: toDateInputValue(recordToEdit.dateOfMarriage),
         groomName: recordToEdit.groomName || '',
         daughterName: recordToEdit.daughterName || '',
         remarks: recordToEdit.remarks || ''

@@ -24,6 +24,7 @@ import {
   exportMarriageVerificationExcel 
 } from '../../utils/exportUtils';
 import AddMarriageVerificationModal from './AddMarriageVerificationModal';
+import { formatDateOnly } from '../../utils/dateUtils';
 
 export default function MarriageVerificationSection() {
   const {
@@ -404,8 +405,8 @@ export default function MarriageVerificationSection() {
                       </td>
 
                       {/* 6. Marriage certificate regis Date */}
-                      <td className="py-3 px-3 text-center font-mono text-slate-700">
-                        {item.marriageCertDate || '—'}
+                      <td className="py-3 px-3 text-center font-mono text-slate-700 whitespace-nowrap">
+                        {formatDateOnly(item.marriageCertDate)}
                       </td>
 
                       {/* 7. Marriage Regd. No */}
@@ -423,8 +424,8 @@ export default function MarriageVerificationSection() {
                       </td>
 
                       {/* 9. Date of Marriage */}
-                      <td className="py-3 px-3 text-center font-mono text-slate-700 font-semibold">
-                        {item.dateOfMarriage || '—'}
+                      <td className="py-3 px-3 text-center font-mono text-slate-700 font-semibold whitespace-nowrap">
+                        {formatDateOnly(item.dateOfMarriage)}
                       </td>
 
                       {/* 10. Name of Groom */}

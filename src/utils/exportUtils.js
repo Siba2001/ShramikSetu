@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { sanitizeSpreadsheetValue, maskAadhaar, maskPhone } from './cryptoUtils';
+import { formatDateOnly } from './dateUtils';
 
 /**
  * Get Clean Module Display Name
@@ -618,10 +619,10 @@ export function exportMarriageVerificationPDF(records, options = {}) {
       (r.beneficiaryName || '—').toUpperCase(),
       (r.block || '—').toUpperCase(),
       r.certifyingAuthority || '—',
-      r.marriageCertDate || '—',
+      formatDateOnly(r.marriageCertDate),
       r.marriageRegdNo || '—',
       r.marriageFor || 'Daughter',
-      r.dateOfMarriage || '—',
+      formatDateOnly(r.dateOfMarriage),
       (r.groomName || '—').toUpperCase(),
       (r.daughterName || '—').toUpperCase()
     ];
@@ -722,10 +723,10 @@ export function exportMarriageVerificationExcel(records, options = {}) {
     'Beneficiary Name': sanitizeSpreadsheetValue(r.beneficiaryName || ''),
     'Block': sanitizeSpreadsheetValue(r.block || ''),
     'Certifying Authority': sanitizeSpreadsheetValue(r.certifyingAuthority || ''),
-    'Marriage certificate regis Date': r.marriageCertDate || '',
+    'Marriage certificate regis Date': formatDateOnly(r.marriageCertDate),
     'Marriage Regd. No': sanitizeSpreadsheetValue(r.marriageRegdNo || ''),
     'Marriage for': r.marriageFor || 'Daughter',
-    'Date of Marriage': r.dateOfMarriage || '',
+    'Date of Marriage': formatDateOnly(r.dateOfMarriage),
     'Name of Groom': sanitizeSpreadsheetValue(r.groomName || ''),
     'Name of Daughter': sanitizeSpreadsheetValue(r.daughterName || ''),
     'Mobile Number': sanitizeSpreadsheetValue(r.phone || ''),
