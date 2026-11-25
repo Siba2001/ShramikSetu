@@ -38,7 +38,9 @@ import {
   lockSessionTerminal,
   unlockSessionTerminal,
   isTerminalLocked as checkIsTerminalLocked,
-  updateSessionLastActive
+  updateSessionLastActive,
+  SESSION_TIMEOUT_MS,
+  isSessionExpired
 } from '../services/auth';
 import { syncQueue } from '../services/syncQueue';
 import { ALL_BLOCKS } from '../data/locationData';
@@ -201,13 +203,20 @@ export function AppProvider({ children }) {
     };
     window.addEventListener('shramiksetu:session_expired', handleSessionExpired);
 
-    // Live Clock Interval for internal duration display
+    // Live Clock Interval for internal duration display & 1-hour session auto-clear
     const interval = setInterval(() => {
       if (!user?.loginAt) return;
 
       const now = Date.now();
       const loginTime = new Date(user.loginAt).getTime();
       const diffMs = Math.max(0, now - loginTime);
+
+      // Strict 1-hour session timeout rule (60 minutes = 3,600,000 ms)
+      if (diffMs >= SESSION_TIMEOUT_MS || isSessionExpired(user)) {
+        showToast('error', 'Your session has expired after 1 hour. Please sign in again.');
+        handleLogout(true);
+        return;
+      }
 
       const totalSec = Math.floor(diffMs / 1000);
       const mins = Math.floor(totalSec / 60);

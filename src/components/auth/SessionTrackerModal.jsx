@@ -151,8 +151,8 @@ export default function SessionTrackerModal({ isOpen, onClose }) {
               </div>
 
               <div className="bg-[#0c1429] rounded-xl p-3 border border-slate-800">
-                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Auto-Lock Limit</div>
-                <div className="text-sm font-black text-amber-400 mt-0.5">20 Minutes</div>
+                <div className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">Session Limit</div>
+                <div className="text-sm font-black text-amber-400 mt-0.5">1 Hour (60m)</div>
               </div>
 
               <div className="bg-[#0c1429] rounded-xl p-3 border border-slate-800">

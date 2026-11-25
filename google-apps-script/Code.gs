@@ -83,7 +83,7 @@ var HEADERS_SESSIONS = [
   "Status"
 ];
 
-var SESSION_TTL_SECONDS = 7200; // 2-hour server-side active session
+var SESSION_TTL_SECONDS = 3600; // 1-hour server-side active session (3600 seconds)
 var MAX_LOGIN_ATTEMPTS = 5;
 var LOCKOUT_PERIOD_SECONDS = 900; // 15-minute brute-force lockout window
 var PBKDF2_ITERATIONS = 5000; // Standard PBKDF2 work factor

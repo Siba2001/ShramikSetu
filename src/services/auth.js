@@ -22,10 +22,36 @@ const ACTIVE_SESSIONS_KEY = 'shramiksetu_active_sessions_v1';
 export const DEFAULT_MASTER_TOKEN = 'SHRAMIK-SECURE-2026';
 export const LEGACY_MASTER_TOKEN = 'DIVY-SECURE-2026';
 
-// Session Policy: 1-hour active session with permission prompt before auto-logout
+// Session Policy: 1-hour active session (strictly clears after 60 minutes)
 export const SESSION_TIMEOUT_MINUTES = 60; // 1 hour
-export const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour in ms
+export const SESSION_TIMEOUT_MS = 60 * 60 * 1000; // 1 hour in ms (3,600,000 ms)
 export const SESSION_WARNING_SECONDS = 60; // 60-second warning prompt before auto-logout
+
+/**
+ * Check if a session or user object has exceeded the 1-hour lifetime
+ */
+export function isSessionExpired(sessionOrUser) {
+  if (!sessionOrUser) return true;
+  const now = Date.now();
+
+  // 1. Check explicit expiresAt timestamp
+  if (sessionOrUser.expiresAt) {
+    const expMs = new Date(sessionOrUser.expiresAt).getTime();
+    if (!isNaN(expMs) && now >= expMs) {
+      return true;
+    }
+  }
+
+  // 2. Check loginAt timestamp (maximum 1-hour lifetime)
+  if (sessionOrUser.loginAt) {
+    const loginMs = new Date(sessionOrUser.loginAt).getTime();
+    if (!isNaN(loginMs) && now - loginMs >= SESSION_TIMEOUT_MS) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 // ==========================================
 // 1. STANDARD ROLES & PERMISSIONS MATRIX
@@ -684,7 +710,9 @@ export function extendSession() {
 }
 
 export function establishSession(account, remember = true) {
-  const now = new Date().toISOString();
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const expiresAt = new Date(now.getTime() + SESSION_TIMEOUT_MS).toISOString();
   const sessionToken = account.sessionToken || account.token || generateSecureToken();
   const sessionData = {
     username: account.username,
@@ -696,8 +724,9 @@ export function establishSession(account, remember = true) {
     avatar: account.avatar || 'AD',
     token: sessionToken,
     sessionToken: sessionToken,
-    loginAt: now,
-    lastActiveAt: now
+    loginAt: nowIso,
+    lastActiveAt: nowIso,
+    expiresAt: expiresAt
   };
 
   try {
@@ -728,12 +757,22 @@ export function establishSession(account, remember = true) {
 export function getCurrentUser() {
   try {
     const session = sessionStorage.getItem(AUTH_STORAGE_KEY);
-    if (session) return JSON.parse(session);
+    let user = session ? JSON.parse(session) : null;
 
-    const local = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (local) return JSON.parse(local);
+    if (!user) {
+      const local = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (local) user = JSON.parse(local);
+    }
 
-    return null;
+    if (!user) return null;
+
+    // Strict 1-hour session expiration rule
+    if (isSessionExpired(user)) {
+      logoutUser();
+      return null;
+    }
+
+    return user;
   } catch (e) {
     console.error('Failed to read auth state', e);
     return null;
@@ -755,11 +794,15 @@ export function updateSessionLastActive() {
   } catch (e) {}
 }
 
-// Active Sessions Tracker
+// Active Sessions Tracker (Prunes sessions older than 1 hour)
 export function getActiveSessions() {
   try {
     const raw = localStorage.getItem(ACTIVE_SESSIONS_KEY);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const sessions = JSON.parse(raw);
+    if (!Array.isArray(sessions)) return [];
+    // Automatically purge sessions older than 1 hour (SESSION_TIMEOUT_MS)
+    return sessions.filter(s => !isSessionExpired(s));
   } catch (e) {
     return [];
   }
@@ -767,11 +810,7 @@ export function getActiveSessions() {
 
 export function registerActiveSession(session) {
   try {
-    const sessions = getActiveSessions().filter(s => {
-      // Remove stale sessions older than 24h
-      const ageMs = Date.now() - new Date(s.loginAt).getTime();
-      return ageMs < 24 * 60 * 60 * 1000;
-    });
+    const sessions = getActiveSessions().filter(s => !isSessionExpired(s));
 
     sessions.unshift({
       id: `sess_${Date.now()}`,
@@ -779,6 +818,7 @@ export function registerActiveSession(session) {
       role: session.role,
       token: session.token,
       loginAt: session.loginAt,
+      expiresAt: session.expiresAt || new Date(Date.now() + SESSION_TIMEOUT_MS).toISOString(),
       device: navigator.userAgent.slice(0, 40)
     });
 
