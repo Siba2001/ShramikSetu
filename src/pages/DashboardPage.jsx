@@ -22,18 +22,19 @@ import {
   GraduationCap,
   Activity,
   Check,
-  Users
+  Users,
+  RotateCw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Link } from 'react-router-dom';
 
 export default function DashboardPage() {
-  const {
-    applications,
-    stats,
-    handleOpenAddModal,
-    handleOpenExportModal,
-    handleOpenViewModal
+  const { 
+    applications, 
+    stats, 
+    handleOpenAddModal, 
+    handleOpenExportModal, 
+    handleOpenViewModal 
   } = useApp();
 
   const [trendView, setTrendView] = useState('Daily Trend');
@@ -52,9 +53,8 @@ export default function DashboardPage() {
   // Today's applications (Prioritizes server summary)
   const todayDateStr = new Date().toISOString().slice(0, 10);
   const todayCount = useMemo(() => {
-    if (safeStats.todayCount !== undefined && safeStats.todayCount > 0) return safeStats.todayCount;
-    return (applications || []).filter(a => (a?.createdAt || a?.applicationDate || '').slice(0, 10) === todayDateStr).length;
-  }, [safeStats.todayCount, applications, todayDateStr]);
+    return applications.filter(a => (a.createdAt || a.applicationDate || '').slice(0, 10) === todayDateStr).length;
+  }, [applications, todayDateStr]);
 
   // Category statistics with routes & colors for ShramikSetu
   const categories = useMemo(() => [
@@ -68,7 +68,7 @@ export default function DashboardPage() {
 
   // Scheme share breakdown for donut chart (100% Dynamic - 0 when empty)
   const schemeDonutData = useMemo(() => {
-    const total = safeStats.totalActive || (applications || []).length;
+    const total = applications.length;
 
     const items = [
       { label: 'New Card', count: newCardsCount, color: '#1E3A8A' },
@@ -87,48 +87,11 @@ export default function DashboardPage() {
       ...i,
       percent: Math.round((i.count / total) * 100)
     }));
-  }, [safeStats.totalActive, applications, newCardsCount, renewalsCount, welfareClaimsCount]);
+  }, [applications.length, newCardsCount, renewalsCount, welfareClaimsCount]);
 
-  // Daily Trend Data (Prioritizes server-side pre-aggregated daily data with strict date validation)
+  // Daily Trend Data (100% Dynamic - strictly empty when no applications)
   const trendData = useMemo(() => {
-    const cleanTrendDate = (raw) => {
-      if (!raw || typeof raw !== 'string') return null;
-      const trimmed = raw.trim();
-      // Match ISO / YYYY-MM-DD
-      const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (isoMatch) {
-        return `${isoMatch[2]}-${isoMatch[3]}`; // MM-DD
-      }
-      // Match DD-MM-YYYY or DD/MM/YYYY
-      const dmyMatch = trimmed.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
-      if (dmyMatch) {
-        return `${dmyMatch[2]}-${dmyMatch[1]}`;
-      }
-      // Try parsing as Date
-      const parsed = new Date(trimmed);
-      if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
-        const m = String(parsed.getMonth() + 1).padStart(2, '0');
-        const d = String(parsed.getDate()).padStart(2, '0');
-        return `${m}-${d}`;
-      }
-      return null; // Rejects garbage strings like '79797' or phone numbers
-    };
-
-    if (safeStats.recentDaysMap && Object.keys(safeStats.recentDaysMap).length > 0) {
-      const entries = Object.entries(safeStats.recentDaysMap)
-        .map(([date, cnt]) => {
-          const label = cleanTrendDate(date);
-          return label ? { rawDate: date, label, count: cnt } : null;
-        })
-        .filter(Boolean)
-        .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
-
-      if (entries.length > 0) {
-        return entries.slice(-10).map(e => ({ date: e.label, count: e.count }));
-      }
-    }
-
-    if (!applications || applications.length === 0) {
+    if (applications.length === 0) {
       return [];
     }
 
@@ -145,8 +108,8 @@ export default function DashboardPage() {
     if (entries.length === 0) {
       return [{ date: todayDateStr.slice(5), count: applications.length }];
     }
-    return entries.slice(-10).map(([date, cnt]) => ({ date, count: cnt }));
-  }, [safeStats.recentDaysMap, applications, todayDateStr]);
+    return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
+  }, [applications, todayDateStr]);
 
   const maxTrendCount = useMemo(() => {
     if (trendData.length === 0) return 10;
@@ -155,7 +118,7 @@ export default function DashboardPage() {
 
   // Top blocks
   const topBlocks = useMemo(() => {
-    return Object.entries(safeStats.blockCounts || {})
+    return Object.entries(stats.blockCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
   }, [safeStats.blockCounts]);
@@ -168,8 +131,7 @@ export default function DashboardPage() {
   // SVG Donut calculation (circumference for r=36 is 2 * PI * 36 ≈ 226)
   const circumference = 226;
   const strokeSegments = useMemo(() => {
-    const total = safeStats.totalActive || (applications || []).length;
-    if (total === 0) {
+    if (applications.length === 0) {
       return [];
     }
     let accumulatedPercent = 0;
@@ -185,11 +147,36 @@ export default function DashboardPage() {
           dashOffset: offset
         };
       });
-  }, [schemeDonutData, safeStats.totalActive, applications]);
+  }, [schemeDonutData, applications.length]);
 
   return (
     <div className="space-y-5 animate-fadeIn">
+      
+      {/* Official Government Portal Banner */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex items-center space-x-4">
+          <img
+            src="/logo.png"
+            alt="ShramikSetu"
+            className="h-12 sm:h-14 w-auto object-contain shrink-0"
+          />
+          <div className="border-l border-slate-200 pl-4 hidden sm:block">
+            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
+              Odisha Building & Other Construction Workers' Welfare Board
+            </h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Integrated Beneficiary Registration, Card Renewal & Welfare Assistance Field Operations System
+            </p>
+          </div>
+        </div>
 
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            Official Portal • Active Session
+          </span>
+        </div>
+      </div>
 
       {/* ======================================================== */}
       {/* 8 KPI STAT CARDS (2 ROWS OF 4 CARDS) - SHRAMIKSETU DATA   */}

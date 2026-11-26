@@ -1031,6 +1031,286 @@ function sendJsonResponse(obj) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+/**
+ * =========================================================================
+ * HIGH-PERFORMANCE CACHE SERVICE HELPERS (Apps Script CacheService)
+ * =========================================================================
+ */
+
+function getScriptCacheItem(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var val = cache.get(key);
+    if (!val) return null;
+    return JSON.parse(val);
+  } catch (e) {
+    return null;
+  }
+}
+
+function setScriptCacheItem(key, data, expirationSeconds) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var str = JSON.stringify(data);
+    // Google Apps Script CacheService limit is 100KB per item
+    if (str.length < 95000) {
+      cache.put(key, str, expirationSeconds || 120);
+    }
+  } catch (e) {}
+}
+
+function invalidateScriptCache(keys) {
+  try {
+    var cache = CacheService.getScriptCache();
+    if (Array.isArray(keys)) {
+      cache.removeAll(keys);
+    } else if (typeof keys === 'string') {
+      cache.remove(keys);
+    }
+  } catch (e) {}
+}
+
+/**
+ * DEDICATED HIGH-SPEED DASHBOARD SUMMARY ENGINE
+ * Computes metrics, status counts, service totals, and district distributions
+ * server-side. Cached in CacheService for 120s to avoid repeated Sheets I/O.
+ */
+function computeDashboardSummary() {
+  var cached = getScriptCacheItem("DASHBOARD_SUMMARY");
+  if (cached) {
+    cached.fromCache = true;
+    return cached;
+  }
+
+  var startTime = new Date().getTime();
+  var totalActive = 0;
+  var pending = 0;
+  var inProgress = 0;
+  var queries = 0;
+  var approved = 0;
+  var bankRejections = 0;
+  var completed = 0;
+
+  var categoryCounts = {
+    "New Card": 0,
+    "Card Renewal": 0,
+    "Annual Contribution": 0,
+    "Marriage Benefit Apply": 0,
+    "Maternity Benefit Apply": 0,
+    "Death Benefit Apply": 0,
+    "Education Assistance Apply": 0
+  };
+
+  var districtStats = {};
+  var blockStats = {};
+  var todayStr = new Date().toISOString().slice(0, 10);
+  var todayCount = 0;
+  var recentDaysMap = {};
+
+  MODULE_SHEETS.forEach(function (sheetName) {
+    var sheet = getOrCreateModuleSheet(sheetName);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return;
+
+    var serviceType = "New Card";
+    if (sheetName === SHEET_CARD_RENEWAL) serviceType = "Card Renewal";
+    else if (sheetName === SHEET_MATERNITY) serviceType = "Maternity Benefit Apply";
+    else if (sheetName === SHEET_DEATH) serviceType = "Death Benefit Apply";
+    else if (sheetName === SHEET_MARRIAGE) serviceType = "Marriage Benefit Apply";
+    else if (sheetName === SHEET_EDUCATION) serviceType = "Education Assistance Apply";
+
+    var isGeneral = (sheetName === SHEET_MARRIAGE || sheetName === SHEET_EDUCATION);
+    var statusCol = isGeneral ? 10 : 8;
+    var distCol = isGeneral ? 6 : 4;
+    var blockCol = isGeneral ? 7 : 5;
+    var createdCol = isGeneral ? 12 : 10;
+    var serviceCol = isGeneral ? 1 : -1;
+
+    for (var i = 1; i < data.length; i++) {
+      var row = data[i];
+      if (!row[0]) continue;
+      totalActive++;
+
+      var actualService = (serviceCol !== -1 && row[serviceCol]) ? String(row[serviceCol]) : serviceType;
+      categoryCounts[actualService] = (categoryCounts[actualService] || 0) + 1;
+
+      var st = String(row[statusCol] || "Pending").trim();
+      var stLower = st.toLowerCase();
+      if (stLower === "pending" || stLower === "e-sign pending") pending++;
+      else if (stLower === "in progress" || stLower === "query replied" || stLower === "in verification") inProgress++;
+      else if (stLower === "query raised" || stLower === "query") queries++;
+      else if (stLower === "approved") approved++;
+      else if (stLower === "bank rejection" || stLower === "rejected") bankRejections++;
+      else if (stLower === "completed" || stLower === "delivered") completed++;
+      else pending++;
+
+      var dist = String(row[distCol] || "").trim();
+      if (dist) districtStats[dist] = (districtStats[dist] || 0) + 1;
+
+      var blk = String(row[blockCol] || "").trim();
+      if (blk) blockStats[blk] = (blockStats[blk] || 0) + 1;
+
+      var rawCreated = String(row[createdCol] || "");
+      var datePart = rawCreated.slice(0, 10);
+      if (datePart) {
+        if (datePart === todayStr) todayCount++;
+        recentDaysMap[datePart] = (recentDaysMap[datePart] || 0) + 1;
+      }
+    }
+  });
+
+  var durationMs = new Date().getTime() - startTime;
+  var summary = {
+    success: true,
+    totalActive: totalActive,
+    pending: pending,
+    inProgress: inProgress,
+    queries: queries,
+    approved: approved,
+    bankRejections: bankRejections,
+    completed: completed,
+    categoryCounts: categoryCounts,
+    districtStats: districtStats,
+    blockStats: blockStats,
+    todayCount: todayCount,
+    recentDaysMap: recentDaysMap,
+    cachedAt: new Date().toISOString(),
+    computeDurationMs: durationMs,
+    fromCache: false
+  };
+
+  setScriptCacheItem("DASHBOARD_SUMMARY", summary, 120);
+  return summary;
+}
+
+/**
+ * SERVER-SIDE PAGINATION & FILTERING ENGINE
+ * Slices and filters applications on the server side to minimize payload transfer.
+ */
+function getApplicationsPaged(params) {
+  var service = params.service || null;
+  var page = Math.max(1, parseInt(params.page || "1", 10));
+  var pageSize = Math.max(1, Math.min(200, parseInt(params.pageSize || "50", 10)));
+  var search = String(params.search || "").trim().toLowerCase();
+  var filterBlock = String(params.block || "All").trim();
+  var filterDistrict = String(params.district || "All").trim();
+  var filterAgent = String(params.agent || "All").trim();
+  var filterStatus = String(params.status || "All").trim();
+  var fromDate = String(params.fromDate || "").trim();
+  var toDate = String(params.toDate || "").trim();
+
+  // Determine target sheets (only read the required sheet)
+  var targetSheets = [];
+  if (service && service !== "All") {
+    targetSheets.push(getSheetNameForService(service));
+  } else {
+    targetSheets = MODULE_SHEETS;
+  }
+
+  var allMatchingRows = [];
+  var summary = {
+    total: 0,
+    pending: 0,
+    inProgress: 0,
+    queries: 0,
+    approved: 0,
+    rejected: 0
+  };
+
+  targetSheets.forEach(function (sheetName) {
+    var sheet = getOrCreateModuleSheet(sheetName);
+    var rows = parseModuleSheet(sheet, sheetName);
+
+    for (var i = 0; i < rows.length; i++) {
+      var item = rows[i];
+
+      // Exact service check
+      if (service && service !== "All") {
+        if (service === "Card Renewal" || service === "Annual Contribution") {
+          if (item.serviceType !== "Card Renewal" && item.serviceType !== "Annual Contribution") continue;
+        } else if (item.serviceType !== service) {
+          continue;
+        }
+      }
+
+      // Filter: Block
+      if (filterBlock !== "All" && filterBlock !== "") {
+        if (String(item.block || "").toLowerCase() !== filterBlock.toLowerCase()) continue;
+      }
+
+      // Filter: District
+      if (filterDistrict !== "All" && filterDistrict !== "") {
+        if (String(item.district || "").toLowerCase() !== filterDistrict.toLowerCase()) continue;
+      }
+
+      // Filter: Agent
+      if (filterAgent !== "All" && filterAgent !== "") {
+        if (String(item.agent || "").toLowerCase() !== filterAgent.toLowerCase()) continue;
+      }
+
+      // Filter: Status
+      if (filterStatus !== "All" && filterStatus !== "") {
+        var itemStatus = String(item.status || "").toLowerCase();
+        var fStatus = filterStatus.toLowerCase();
+        if (fStatus === "pending") {
+          if (itemStatus !== "pending" && itemStatus !== "e-sign pending") continue;
+        } else if (fStatus === "in progress") {
+          if (itemStatus !== "in progress" && itemStatus !== "query replied") continue;
+        } else if (itemStatus !== fStatus) {
+          continue;
+        }
+      }
+
+      // Filter: Date range
+      var itemDate = (item.createdAt || item.applicationDate || "").slice(0, 10);
+      if (fromDate && itemDate && itemDate < fromDate) continue;
+      if (toDate && itemDate && itemDate > toDate) continue;
+
+      // Filter: Search term (cross-field matching)
+      if (search) {
+        var match = (
+          (item.applicantName && item.applicantName.toLowerCase().indexOf(search) !== -1) ||
+          (item.cardNo && item.cardNo.toLowerCase().indexOf(search) !== -1) ||
+          (item.aadhaarNo && item.aadhaarNo.toLowerCase().indexOf(search) !== -1) ||
+          (item.trackNo && item.trackNo.toLowerCase().indexOf(search) !== -1) ||
+          (item.phone && item.phone.toLowerCase().indexOf(search) !== -1) ||
+          (item.agent && item.agent.toLowerCase().indexOf(search) !== -1) ||
+          (item.block && item.block.toLowerCase().indexOf(search) !== -1) ||
+          (item.district && item.district.toLowerCase().indexOf(search) !== -1) ||
+          (item.remarks && item.remarks.toLowerCase().indexOf(search) !== -1)
+        );
+        if (!match) continue;
+      }
+
+      // Summary counts for module
+      summary.total++;
+      var stLower = String(item.status || "").toLowerCase();
+      if (stLower === "pending" || stLower === "e-sign pending") summary.pending++;
+      else if (stLower === "in progress" || stLower === "query replied") summary.inProgress++;
+      else if (stLower === "query raised") summary.queries++;
+      else if (stLower === "approved") summary.approved++;
+      else if (stLower === "rejected" || stLower === "bank rejection") summary.rejected++;
+
+      allMatchingRows.push(item);
+    }
+  });
+
+  var totalRecords = allMatchingRows.length;
+  var totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  var startIndex = (page - 1) * pageSize;
+  var pagedRecords = allMatchingRows.slice(startIndex, startIndex + pageSize);
+
+  return {
+    success: true,
+    page: page,
+    pageSize: pageSize,
+    totalRecords: totalRecords,
+    totalPages: totalPages,
+    data: pagedRecords,
+    summary: summary
+  };
+}
+
 function getScriptCacheItem(key) {
   try {
     var cache = CacheService.getScriptCache();
@@ -1078,330 +1358,78 @@ function invalidateScriptCache(keys) {
     } else if (typeof keys === 'string') {
       cache.remove(keys);
     }
-  } catch (e) {}
-}
 
-/**
- * =========================================================================
- * CORE LOGIC: DASHBOARD SUMMARY & PAGINATED APPLICATIONS
- * =========================================================================
- */
-
-function computeDashboardSummary(session, bypassCache) {
-  var isScoped = session && !isSuperAdmin(session);
-  var cacheKey = isScoped ? ("DASHBOARD_SUMMARY_" + session.role + "_" + session.district + "_" + session.block) : "DASHBOARD_SUMMARY";
-
-  if (!bypassCache) {
-    var cached = getScriptCacheItem(cacheKey);
-    if (cached) {
-      cached.fromCache = true;
-      return cached;
-    }
-  }
-
-  var startTime = new Date().getTime();
-  var totalActive = 0;
-  var pending = 0;
-  var inProgress = 0;
-  var queries = 0;
-  var approved = 0;
-  var bankRejections = 0;
-  var rejected = 0;
-  var completed = 0;
-  var todayCount = 0;
-  var todayDateStr = Utilities.formatDate(new Date(), "Asia/Kolkata", "yyyy-MM-dd");
-  var recentDaysMap = {};
-
-  var serviceStats = {
-    "New Card": 0,
-    "Card Renewal": 0,
-    "Annual Contribution": 0,
-    "Maternity Benefit Apply": 0,
-    "Death Benefit Apply": 0,
-    "Marriage Benefit Apply": 0,
-    "Education Assistance Apply": 0
-  };
-
-  var districtDistribution = {};
-  var blockDistribution = {};
-
-  MODULE_SHEETS.forEach(function (sheetName) {
-    var sheet = getOrCreateModuleSheet(sheetName);
-    var data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return;
-
-    var headerRow = data[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-    var statusCol = headerRow.indexOf("status");
-    var distCol = headerRow.indexOf("district");
-    var blockCol = headerRow.indexOf("block");
-    var createdCol = headerRow.indexOf("created at");
-    if (createdCol === -1) createdCol = headerRow.indexOf("date");
-    if (createdCol === -1) createdCol = headerRow.indexOf("createdat");
-
-    if (statusCol === -1) {
-      statusCol = (sheetName === SHEET_MARRIAGE || sheetName === SHEET_EDUCATION) ? 10 : 8;
-    }
-    if (distCol === -1) {
-      distCol = (sheetName === SHEET_MARRIAGE || sheetName === SHEET_EDUCATION) ? 6 : 4;
-    }
-    if (blockCol === -1) {
-      blockCol = (sheetName === SHEET_MARRIAGE || sheetName === SHEET_EDUCATION) ? 7 : 5;
-    }
-
-    var sLower = String(sheetName || "").replace(/[_\s-]+/g, "").toLowerCase();
-    var serviceKey = "New Card";
-    if (sLower.includes("renewal") || sLower.includes("contribution")) serviceKey = "Card Renewal";
-    else if (sLower.includes("maternity")) serviceKey = "Maternity Benefit Apply";
-    else if (sLower.includes("death")) serviceKey = "Death Benefit Apply";
-    else if (sLower.includes("marriage")) serviceKey = "Marriage Benefit Apply";
-    else if (sLower.includes("education")) serviceKey = "Education Assistance Apply";
-
-    for (var r = 1; r < data.length; r++) {
-      var rowDist = String(data[r][distCol] || "").trim();
-      var rowBlock = String(data[r][blockCol] || "").trim();
-
-      if (session && !canUserAccessBlock(session, rowDist, rowBlock)) {
-        continue;
+    // 1. GET ACTIVE APPLICATIONS (from specific module sheet OR aggregated across all module sheets)
+    if (action === "getAll") {
+      if (requestedService) {
+        const targetSheetName = getSheetNameForService(requestedService);
+        const sheet = getOrCreateModuleSheet(targetSheetName);
+        const data = parseModuleSheet(sheet, targetSheetName);
+        return sendJsonResponse({ success: true, count: data.length, data: data });
       }
 
-      totalActive++;
-      if (serviceStats[serviceKey] !== undefined) {
-        serviceStats[serviceKey]++;
-      }
-      if (serviceKey === "Card Renewal") {
-        serviceStats["Annual Contribution"] = serviceStats["Card Renewal"];
-      }
-
-      var stLower = String(data[r][statusCol] || "Pending").trim().toLowerCase();
-      if (stLower === "pending" || stLower === "e-sign pending") pending++;
-      else if (stLower === "in progress" || stLower === "query replied") inProgress++;
-      else if (stLower === "query raised") queries++;
-      else if (stLower === "approved") approved++;
-      else if (stLower === "bank reject" || stLower === "bank rejection") bankRejections++;
-      else if (stLower === "rejected") rejected++;
-      else if (stLower === "completed") completed++;
-      else inProgress++;
-
-      if (rowDist) {
-        if (!districtDistribution[rowDist]) districtDistribution[rowDist] = 0;
-        districtDistribution[rowDist]++;
-      }
-      if (rowBlock) {
-        if (!blockDistribution[rowBlock]) blockDistribution[rowBlock] = 0;
-        blockDistribution[rowBlock]++;
-      }
-
-      var rawDate = createdCol !== -1 ? String(data[r][createdCol] || "") : "";
-      var dateStr = "";
-      if (rawDate) {
-        dateStr = rawDate.slice(0, 10);
-      }
-      if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        recentDaysMap[dateStr] = (recentDaysMap[dateStr] || 0) + 1;
-        if (dateStr === todayDateStr) {
-          todayCount++;
-        }
-      }
-    }
-  });
-
-  var elapsedMs = new Date().getTime() - startTime;
-  var summary = {
-    success: true,
-    fromCache: false,
-    calculationTimeMs: elapsedMs,
-    totalActive: totalActive,
-    pending: pending,
-    inProgress: inProgress,
-    queries: queries,
-    approved: approved,
-    bankRejections: bankRejections,
-    rejected: rejected,
-    completed: completed,
-    todayCount: todayCount,
-    recentDaysMap: recentDaysMap,
-    serviceStats: serviceStats,
-    categoryCounts: serviceStats,
-    serviceCounts: serviceStats,
-    districtDistribution: districtDistribution,
-    districtStats: districtDistribution,
-    districtCounts: districtDistribution,
-    blockDistribution: blockDistribution,
-    blockStats: blockDistribution,
-    blockCounts: blockDistribution,
-    timestamp: new Date().toISOString()
-  };
-
-  setScriptCacheItem(cacheKey, summary, 30);
-  return summary;
-}
-
-function getApplicationsPaged(params, session) {
-  params = params || {};
-  var requestedService = params.service || null;
-  var page = Math.max(1, parseInt(params.page || 1, 10));
-  var pageSize = Math.min(100, Math.max(10, parseInt(params.pageSize || 50, 10)));
-  var search = (params.search || "").trim().toLowerCase();
-  var filterStatus = (params.status || "All").trim();
-  var filterDistrict = (params.district || "All").trim();
-  var filterBlock = (params.block || "All").trim();
-  var filterAgent = (params.agent || "All").trim();
-  var fromDate = validateDateString(params.fromDate);
-  var toDate = validateDateString(params.toDate);
-
-  // Enforce session restrictions on district & block filters
-  if (session && !isSuperAdmin(session)) {
-    if (isDistrictOperator(session)) {
-      filterDistrict = session.district;
-    } else if (isBlockOperator(session)) {
-      filterDistrict = session.district;
-      filterBlock = session.block;
-    }
-  }
-
-  // High-Speed CacheService Layer (100-150ms instant response)
-  var isScoped = session && !isSuperAdmin(session);
-  var scopePrefix = isScoped ? (session.role + "_" + (session.district || "") + "_" + (session.block || "") + "_") : "GLOBAL_";
-  var cacheEpoch = getScriptCacheItem("DATA_EPOCH") || "1";
-  var searchHash = search ? Utilities.base64Encode(search).replace(/=/g, "").slice(0, 16) : "ALL";
-  var cacheKey = "PG_v" + cacheEpoch + "_" + scopePrefix + (requestedService || "ALL") + "_" + page + "_" + pageSize + "_" +
-                 filterDistrict + "_" + filterBlock + "_" + filterStatus + "_" + filterAgent + "_" + searchHash + "_" + (fromDate || "") + "_" + (toDate || "");
-
-  var bypassCache = params.bypassCache === true || params.refresh === true;
-  if (!bypassCache) {
-    var cached = getScriptCacheItem(cacheKey);
-    if (cached) {
-      cached.fromCache = true;
-      return cached;
-    }
-  }
-
-  var sheetsToRead = [];
-  if (requestedService) {
-    var targetSheet = getSheetNameForService(requestedService);
-    if (!targetSheet) {
-      return { success: false, error: "INVALID_SERVICE_TYPE", message: "Unknown service type: " + requestedService };
-    }
-    sheetsToRead.push(targetSheet);
-  } else {
-    sheetsToRead = MODULE_SHEETS;
-  }
-
-  var allMatchingRows = [];
-  var summary = {
-    total: 0,
-    pending: 0,
-    inProgress: 0,
-    queries: 0,
-    approved: 0,
-    rejected: 0
-  };
-
-  sheetsToRead.forEach(function (sheetName) {
-    var sheet = getOrCreateModuleSheet(sheetName);
-    var rawRows = parseModuleSheet(sheet, sheetName);
-
-    for (var i = 0; i < rawRows.length; i++) {
-      var item = rawRows[i];
-
-      if (session && !canUserAccessBlock(session, item.district, item.block)) {
-        continue;
-      }
-
-      if (filterDistrict !== "All" && filterDistrict !== "") {
-        if (String(item.district || "").toLowerCase() !== filterDistrict.toLowerCase()) continue;
-      }
-
-      if (filterBlock !== "All" && filterBlock !== "") {
-        if (String(item.block || "").toLowerCase() !== filterBlock.toLowerCase()) continue;
-      }
-
-      if (filterAgent !== "All" && filterAgent !== "") {
-        if (String(item.agent || "").toLowerCase() !== filterAgent.toLowerCase()) continue;
-      }
-
-      if (filterStatus !== "All" && filterStatus !== "") {
-        var itemStatus = String(item.status || "").toLowerCase();
-        var fStatus = filterStatus.toLowerCase();
-        if (fStatus === "pending") {
-          if (itemStatus !== "pending" && itemStatus !== "e-sign pending") continue;
-        } else if (fStatus === "in progress") {
-          if (itemStatus !== "in progress" && itemStatus !== "query replied") continue;
-        } else if (itemStatus !== fStatus) {
-          continue;
-        }
-      }
-
-      var itemDate = (item.createdAt || item.applicationDate || "").slice(0, 10);
-      if (fromDate && itemDate && itemDate < fromDate) continue;
-      if (toDate && itemDate && itemDate > toDate) continue;
-
-      if (search) {
-        var match = (
-          (item.applicantName && item.applicantName.toLowerCase().indexOf(search) !== -1) ||
-          (item.cardNo && item.cardNo.toLowerCase().indexOf(search) !== -1) ||
-          (item.aadhaarNo && item.aadhaarNo.toLowerCase().indexOf(search) !== -1) ||
-          (item.trackNo && item.trackNo.toLowerCase().indexOf(search) !== -1) ||
-          (item.phone && item.phone.toLowerCase().indexOf(search) !== -1) ||
-          (item.agent && item.agent.toLowerCase().indexOf(search) !== -1) ||
-          (item.block && item.block.toLowerCase().indexOf(search) !== -1) ||
-          (item.district && item.district.toLowerCase().indexOf(search) !== -1) ||
-          (item.remarks && item.remarks.toLowerCase().indexOf(search) !== -1)
-        );
-        if (!match) continue;
-      }
-
-      summary.total++;
-      var stLower = String(item.status || "").toLowerCase();
-      if (stLower === "pending" || stLower === "e-sign pending") summary.pending++;
-      else if (stLower === "in progress" || stLower === "query replied") summary.inProgress++;
-      else if (stLower === "query raised") summary.queries++;
-      else if (stLower === "approved") summary.approved++;
-      else if (stLower === "rejected" || stLower === "bank rejection") summary.rejected++;
-
-      allMatchingRows.push(sanitizeApplicationForRole(item, session));
-    }
-  });
-
-  var totalRecords = allMatchingRows.length;
-  var totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
-  var startIndex = (page - 1) * pageSize;
-  var pagedRecords = allMatchingRows.slice(startIndex, startIndex + pageSize);
-
-  var result = {
-    success: true,
-    fromCache: false,
-    page: page,
-    pageSize: pageSize,
-    totalRecords: totalRecords,
-    totalPages: totalPages,
-    data: pagedRecords,
-    summary: summary
-  };
-
-  setScriptCacheItem(cacheKey, result, 180);
-  return result;
-}
-
-/**
- * =========================================================================
- * HTTP GET DISPATCHER
- * Strictly handles public health ping. Protected requests must use POST.
- * =========================================================================
- */
-function doGet(e) {
-  try {
-    var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "ping";
-
-    // Only unauthenticated public ping is permitted via GET
-    if (action === "ping") {
-      return sendJsonResponse({
-        success: true,
-        status: "Online",
-        service: "ShramikSetu Enterprise Backend",
-        version: "2.2-ZeroTrust",
-        timestamp: new Date().toISOString()
+      // Aggregate across all active module sheets
+      let allApps = [];
+      MODULE_SHEETS.forEach(function (sheetName) {
+        const sheet = getOrCreateModuleSheet(sheetName);
+        const rows = parseModuleSheet(sheet, sheetName);
+        allApps = allApps.concat(rows);
       });
+
+      return sendJsonResponse({ success: true, count: allApps.length, data: allApps });
+    }
+
+    // 2. GET USERS
+    if (action === "getUsers") {
+      const sheet = getOrCreateUsersSheet();
+      const users = getUsersData(sheet);
+      return sendJsonResponse({ success: true, count: users.length, users: users });
+    }
+
+    // 4. GET FIELD AGENTS
+    if (action === "getAgents") {
+      const sheet = getOrCreateSheet(SHEET_AGENTS, HEADERS_AGENTS);
+      const agents = getAgentsData(sheet);
+      return sendJsonResponse({ success: true, count: agents.length, agents: agents });
+    }
+
+    // 5. GET ACTIVITY LOGS
+    if (action === "getLogs") {
+      const sheet = getOrCreateSheet(SHEET_LOGS, HEADERS_LOGS);
+      const logs = getLogsData(sheet);
+      return sendJsonResponse({ success: true, count: logs.length, logs: logs });
+    }
+
+    // 6. GET MARRIAGE VERIFICATIONS
+    if (action === "getMarriageVerifications") {
+      const sheet = getOrCreateSheet(SHEET_MARRIAGE_VERIFY, HEADERS_MARRIAGE_VERIFY);
+      const data = sheet.getDataRange().getValues();
+      const records = [];
+      if (data.length > 1) {
+        for (let i = 1; i < data.length; i++) {
+          const row = data[i];
+          records.push({
+            id: String(row[0] || ""),
+            slNo: row[1] || i,
+            regNo: String(row[2] || ""),
+            beneficiaryName: String(row[3] || ""),
+            phone: String(row[4] || ""),
+            block: String(row[5] || ""),
+            certifyingAuthority: String(row[6] || ""),
+            marriageCertDate: row[7] ? String(row[7]) : "",
+            marriageRegdNo: String(row[8] || ""),
+            marriageFor: String(row[9] || "Daughter"),
+            dateOfMarriage: row[10] ? String(row[10]) : "",
+            groomName: String(row[11] || ""),
+            daughterName: String(row[12] || ""),
+            remarks: String(row[13] || ""),
+            status: String(row[14] || "Verified"),
+            createdAt: row[15] ? String(row[15]) : "",
+            updatedAt: row[16] ? String(row[16]) : ""
+          });
+        }
+      }
+      return sendJsonResponse({ success: true, count: records.length, records: records });
     }
 
     // Reject transmission of session tokens or protected queries in GET URL parameters
@@ -1875,7 +1903,6 @@ function processPostRequest(postData) {
 
         var row = formatApplicationRow(targetSheetName, id, payload, now);
         sheet.appendRow(row);
-        bumpDataEpoch();
 
         logAuditDirect("APPLICATION_CREATED", "Registered " + (payload.serviceType || "Application"), targetSheetName, id, "Success", session.username, session.role);
         return sendJsonResponse({ success: true, id: id, sheet: targetSheetName, message: "Saved to " + targetSheetName });
@@ -1898,29 +1925,24 @@ function processPostRequest(postData) {
           var sData = sSheet.getDataRange().getValues();
           if (sData.length <= 1) continue;
 
-          var headers = sData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-          var idColIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
-          var trackColIdx = headers.findIndex(function (h) { return h === "tracking no" || h === "track no" || h === "tracking number"; });
-          var distColIdx = headers.indexOf("district");
-          var blockColIdx = headers.indexOf("block");
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][0]) === String(id) || (payload.trackNo && String(data[i][3]) === String(payload.trackNo))) {
+            foundRow = i + 1;
+            break;
+          }
+        }
 
-          for (var r = 1; r < sData.length; r++) {
-            var row = sData[r];
-            var isMatch = false;
-
-            if (idToMatch && String(row[idColIdx] || "").trim() === idToMatch) {
-              isMatch = true;
-            } else if (trackToMatch && trackColIdx !== -1 && String(row[trackColIdx] || "").trim() === trackToMatch) {
-              isMatch = true;
-            }
-
-            if (isMatch) {
-              var recDist = distColIdx !== -1 ? String(row[distColIdx] || "") : "";
-              var recBlock = blockColIdx !== -1 ? String(row[blockColIdx] || "") : "";
-
-              if (!canUserAccessBlock(session, recDist, recBlock)) {
-                logAuditDirect("PERMISSION_DENIED", "Attempted application update outside jurisdiction", sName, idToMatch || trackToMatch, "Denied", session.username, session.role);
-                return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot modify record outside assigned jurisdiction." });
+        // If not in primary module sheet, search all module sheets
+        if (foundRow === -1) {
+          for (let m = 0; m < MODULE_SHEETS.length; m++) {
+            const altSheet = getOrCreateModuleSheet(MODULE_SHEETS[m]);
+            const altData = altSheet.getDataRange().getValues();
+            for (let i = 1; i < altData.length; i++) {
+              if (String(altData[i][0]) === String(id)) {
+                // Found in altSheet - update in-place
+                const updatedRow = formatApplicationRow(MODULE_SHEETS[m], id, payload, now);
+                altSheet.getRange(i + 1, 1, 1, updatedRow.length).setValues([updatedRow]);
+                return sendJsonResponse({ success: true, message: "Updated in " + MODULE_SHEETS[m] });
               }
 
               if (payload.district || payload.block) {
@@ -1931,201 +1953,35 @@ function processPostRequest(postData) {
                 }
               }
 
-              // Merge partial payload updates with existing row values
-              var mergedRow = mergeApplicationRow(sName, headers, row, payload, now);
-              sSheet.getRange(r + 1, 1, 1, mergedRow.length).setValues([mergedRow]);
-              bumpDataEpoch();
+        // In-place update
+        const updatedRow = formatApplicationRow(targetSheetName, id, payload, now);
+        sheet.getRange(foundRow, 1, 1, updatedRow.length).setValues([updatedRow]);
 
-              logAuditDirect("APPLICATION_UPDATED", "Updated record " + (row[idColIdx] || idToMatch), sName, row[idColIdx] || idToMatch, "Success", session.username, session.role);
-              return sendJsonResponse({ success: true, message: "Record updated successfully." });
-            }
-          }
-        }
-
-        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found in database." });
+        logAuditDirect("APPLICATION_UPDATED", "Updated record: " + id, targetSheetName, id, "Success");
+        return sendJsonResponse({ success: true, message: "Updated in " + targetSheetName });
       }
 
+      // B3. DELETE RECORD
       if (action === "delete") {
-        if (!session || (!isSuperAdmin(session) && !isDistrictOperator(session) && !isBlockOperator(session))) {
-          logAuditDirect("PERMISSION_DENIED", "Unauthorized role attempted application deletion", "Database", String(payload.id || "-"), "Denied", session ? session.username : "Anonymous", session ? session.role : "None");
-          return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Application deletion requires authorized operator credentials." });
-        }
-
-        var delId = String(payload.id || "").trim();
-        var delTrack = String(payload.trackNo || "").trim();
-        var delCard = String(payload.cardNo || "").trim();
-        var delAadhaar = String(payload.aadhaarNo || "").trim().replace(/\s+/g, '');
-        var delName = String(payload.applicantName || "").trim().toLowerCase();
-        var delBlock = String(payload.block || "").trim().toLowerCase();
-        var delService = payload.serviceType ? getSheetNameForService(payload.serviceType) : null;
-
-        if (!delId && !delTrack && !delCard && !delAadhaar && !delName) {
-          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record identifier (Tracking No, ID, Card No, or Aadhaar) is required." });
-        }
-
-        var candidateSheets = [];
-        if (delService) {
-          candidateSheets.push(delService);
-        }
-        MODULE_SHEETS.forEach(function (s) {
-          if (candidateSheets.indexOf(s) === -1) candidateSheets.push(s);
-        });
-
-        for (var m = 0; m < candidateSheets.length; m++) {
-          var dSheet = getOrCreateModuleSheet(candidateSheets[m]);
-          var dData = dSheet.getDataRange().getValues();
-          if (dData.length <= 1) continue;
-
-          var dHeaders = dData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-          var dIdIdx = dHeaders.indexOf("id");
-          var dTrackIdx = dHeaders.findIndex(function (h) { 
-            return h === "tracking no" || h === "track no" || h === "tracking number" || h === "track number" || h === "tracking" || h.indexOf("track") !== -1; 
-          });
-          var dCardIdx = dHeaders.findIndex(function (h) { 
-            return h === "nirman shramik card no" || h === "card no" || h === "shramik card no" || h === "card number" || h.indexOf("card") !== -1; 
-          });
-          var dAadhaarIdx = dHeaders.findIndex(function (h) {
-            return h === "aadhaar no" || h === "aadhaar number" || h === "aadhaar" || h === "aadhar no" || h.indexOf("aadhaar") !== -1 || h.indexOf("aadhar") !== -1;
-          });
-          var dNameIdx = dHeaders.findIndex(function (h) {
-            return h === "applicant name" || h === "card holder name" || h === "beneficiary name" || h === "name" || h.indexOf("name") !== -1;
-          });
-          var distColIdx = dHeaders.indexOf("district");
-          var blockColIdx = dHeaders.indexOf("block");
-
-          for (var dr = 1; dr < dData.length; dr++) {
-            var rowMatch = false;
-
-            // 1. Primary check: Unique Tracking Number (most specific)
-            if (delTrack && dTrackIdx !== -1) {
-              var rowTrack = String(dData[dr][dTrackIdx] || "").trim();
-              if (rowTrack && (rowTrack.toLowerCase() === delTrack.toLowerCase() || rowTrack.replace(/\s+/g, '') === delTrack.replace(/\s+/g, ''))) {
-                rowMatch = true;
-              }
-            }
-
-            // 2. Exact ID match (only if ID column actually exists in sheet)
-            if (!rowMatch && delId && dIdIdx !== -1) {
-              var rowId = String(dData[dr][dIdIdx] || "").trim();
-              if (rowId && rowId.toLowerCase() === delId.toLowerCase()) {
-                rowMatch = true;
-              }
-            }
-
-            // 3. Card Number match
-            if (!rowMatch && delCard && dCardIdx !== -1) {
-              var rowCard = String(dData[dr][dCardIdx] || "").trim();
-              if (rowCard && rowCard.toLowerCase() === delCard.toLowerCase()) {
-                rowMatch = true;
-              }
-            }
-
-            // 4. Aadhaar Number match
-            if (!rowMatch && delAadhaar && dAadhaarIdx !== -1) {
-              var rowAadh = String(dData[dr][dAadhaarIdx] || "").trim().replace(/\s+/g, '');
-              if (rowAadh && rowAadh === delAadhaar) {
-                rowMatch = true;
-              }
-            }
-
-            // 5. Name + Block composite match
-            if (!rowMatch && delName && delBlock && dNameIdx !== -1 && blockColIdx !== -1) {
-              var rowName = String(dData[dr][dNameIdx] || "").trim().toLowerCase();
-              var rowBlock = String(dData[dr][blockColIdx] || "").trim().toLowerCase();
-              if (rowName === delName && rowBlock === delBlock) {
-                rowMatch = true;
-              }
-            }
-
-            if (rowMatch) {
-              if (!isSuperAdmin(session)) {
-                var rowDist = distColIdx !== -1 ? String(dData[dr][distColIdx] || "").trim() : "";
-                var rowBlock = blockColIdx !== -1 ? String(dData[dr][blockColIdx] || "").trim() : "";
-                if (!canUserAccessBlock(session, rowDist, rowBlock)) {
-                  logAuditDirect("PERMISSION_DENIED", "Operator attempted deletion outside assigned territory", candidateSheets[m], delId || delTrack, "Denied", session.username, session.role);
-                  return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Deletion outside assigned geographic jurisdiction is denied." });
-                }
-              }
-
-              dSheet.deleteRow(dr + 1);
-              bumpDataEpoch();
-              logAuditDirect("APPLICATION_DELETED", "Deleted application " + (delTrack || delId || delCard || delName), candidateSheets[m], delTrack || delId || delCard, "Success", session.username, session.role);
-              return sendJsonResponse({ success: true, message: "Record removed successfully." });
+        const id = String(payload.id || "").trim();
+        const trackNo = String(payload.trackNo || "").trim();
+        for (let m = 0; m < MODULE_SHEETS.length; m++) {
+          const sheet = getOrCreateModuleSheet(MODULE_SHEETS[m]);
+          const data = sheet.getDataRange().getValues();
+          for (let i = 1; i < data.length; i++) {
+            const rowId = String(data[i][0] || "").trim();
+            const rowTrack = String(data[i][3] || "").trim();
+            if ((id && rowId === id) || (trackNo && rowTrack === trackNo)) {
+              sheet.deleteRow(i + 1);
+              logAuditDirect("APPLICATION_DELETED", "Deleted: " + (id || trackNo), MODULE_SHEETS[m], id, "Success");
+              return sendJsonResponse({ success: true, message: "Record removed from " + MODULE_SHEETS[m] });
             }
           }
         }
-        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found." });
+        return sendJsonResponse({ success: false, error: "Record not found" });
       }
 
-      if (action === "updateStatus") {
-        var id = String(payload.id || "").trim();
-        var trackNo = (!id && payload.trackNo) ? String(payload.trackNo).trim() : "";
-        var newStatus = validateStatusValue(payload.status);
-        var remarks = sanitizeCell(payload.remarks || payload.officer || "");
-        var serviceType = payload.serviceType || "";
-
-        if (!id && !trackNo) {
-          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record ID is required." });
-        }
-        if (!newStatus) {
-          return sendJsonResponse({ success: false, error: "INVALID_STATUS", message: "Specified status value is not permitted." });
-        }
-
-        var candidateSheets = serviceType ? [getSheetNameForService(serviceType)] : MODULE_SHEETS;
-        candidateSheets = candidateSheets.filter(Boolean);
-
-        for (var cs = 0; cs < candidateSheets.length; cs++) {
-          var cName = candidateSheets[cs];
-          var cSheet = getOrCreateModuleSheet(cName);
-          var cData = cSheet.getDataRange().getValues();
-          if (cData.length <= 1) continue;
-
-          var cHeaders = cData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-          var idIdx = cHeaders.indexOf("id") !== -1 ? cHeaders.indexOf("id") : 0;
-          var trackIdx = cHeaders.findIndex(function (h) { return h === "tracking no" || h === "track no"; });
-          var distIdx = cHeaders.indexOf("district");
-          var blockIdx = cHeaders.indexOf("block");
-          var statusCol = cHeaders.indexOf("status") + 1;
-          var remarksCol = cHeaders.findIndex(function (h) { return h.includes("remark") || h.includes("officer"); }) + 1;
-          var updatedCol = cHeaders.findIndex(function (h) { return h.includes("updated"); }) + 1;
-
-          for (var cr = 1; cr < cData.length; cr++) {
-            var rowMatch = false;
-            if (id && String(cData[cr][idIdx] || "").trim() === id) rowMatch = true;
-            else if (trackNo && trackIdx !== -1 && String(cData[cr][trackIdx] || "").trim() === trackNo) rowMatch = true;
-
-            if (rowMatch) {
-              var rowDist = distIdx !== -1 ? String(cData[cr][distIdx] || "") : "";
-              var rowBlock = blockIdx !== -1 ? String(cData[cr][blockIdx] || "") : "";
-
-              if (!canUserAccessBlock(session, rowDist, rowBlock)) {
-                logAuditDirect("PERMISSION_DENIED", "Attempted status update outside jurisdiction", cName, id || trackNo, "Denied", session.username, session.role);
-                return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot change status outside assigned jurisdiction." });
-              }
-
-              var rowNum = cr + 1;
-              var prevStatus = String(cData[cr][statusCol - 1] || "");
-
-              if (statusCol > 0) cSheet.getRange(rowNum, statusCol).setValue(sanitizeCell(newStatus));
-              if (remarksCol > 0 && remarks) cSheet.getRange(rowNum, remarksCol).setValue(remarks);
-              if (updatedCol > 0) cSheet.getRange(rowNum, updatedCol).setValue(now);
-
-              bumpDataEpoch();
-              logAuditDirect("STATUS_UPDATED", "Status changed from " + prevStatus + " to " + newStatus, cName, id || trackNo, "Success", session.username, session.role, prevStatus, newStatus);
-
-              return sendJsonResponse({
-                success: true,
-                message: "Status updated to " + newStatus,
-                id: id || trackNo,
-                status: newStatus,
-                sheet: cName
-              });
-            }
-          }
-        }
-        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found." });
-      }
-
+      // B4. BATCH IMPORT (Auto-sorts records into their respective module sheets)
       if (action === "batchImport") {
         if (!isSuperAdmin(session) && !isDistrictOperator(session)) {
           return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Batch import requires administrative privileges." });
@@ -2154,13 +2010,13 @@ function processPostRequest(postData) {
           var sSheet = getOrCreateModuleSheet(sheetName);
           var rows = categorized[sheetName];
           if (rows.length > 0) {
-            sSheet.getRange(sSheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+            sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
+            totalImported += rows.length;
           }
         });
 
-        bumpDataEpoch();
-        logAuditDirect("EXCEL_IMPORT", "Batch imported " + validCount + " applications", "Import", "-", "Success", session.username, session.role);
-        return sendJsonResponse({ success: true, inserted: validCount, message: "Imported " + validCount + " records." });
+        logAuditDirect("EXCEL_IMPORT", "Batch imported " + totalImported + " records", "Import", "-", "Success");
+        return sendJsonResponse({ success: true, inserted: totalImported, message: "Batch distributed to respective module sheets" });
       }
 
       // 4C. AGENT MANAGEMENT
@@ -2187,63 +2043,70 @@ function processPostRequest(postData) {
           now
         ]);
 
-        invalidateScriptCache(["AGENTS_LIST"]);
-        logAuditDirect("AGENT_ADDED", "Added agent: " + payload.name, "Agents", agentId, "Success", session.username, session.role);
-        return sendJsonResponse({ success: true, id: agentId });
+        agentSheet.appendRow(row);
+        logAuditDirect("AGENT_ADDED", "Added agent: " + payload.name, "Agents", id, "Success");
+        return sendJsonResponse({ success: true, id: id });
       }
 
       if (action === "updateAgent") {
-        var agId = String(payload.id || "").trim();
-        var agData = agentSheet.getDataRange().getValues();
-        var agHeaders = agData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
-        var agIdIdx = agHeaders.indexOf("id") !== -1 ? agHeaders.indexOf("id") : 0;
-        var agDistIdx = agHeaders.indexOf("district");
-        var agBlockIdx = agHeaders.indexOf("block");
+        const id = payload.id;
+        const oldName = payload.oldName || "";
+        const phone = payload.phone || payload.mobile || "";
+        const district = payload.district || "";
+        const block = payload.block || payload.village || "";
+        const photo = (payload.photo && payload.photo.length < 48000) ? payload.photo : "";
+        const status = payload.status || "";
 
-        for (var i = 1; i < agData.length; i++) {
-          if (String(agData[i][agIdIdx] || "").trim() === agId) {
-            var existingDist = agDistIdx !== -1 ? String(agData[i][agDistIdx] || "") : "";
-            var existingBlock = agBlockIdx !== -1 ? String(agData[i][agBlockIdx] || "") : "";
+        // Check if Photo column exists in header row; if not, add it
+        const lastCol = agentSheet.getLastColumn() || 1;
+        const headerRow = agentSheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        let photoCol = headerRow.findIndex(h => String(h || "").toLowerCase().includes("photo"));
+        if (photoCol === -1 && photo) {
+          const nextCol = lastCol + 1;
+          agentSheet.getRange(1, nextCol).setValue("Photo");
+          photoCol = nextCol - 1;
+        }
 
-            if (!canUserAccessBlock(session, existingDist, existingBlock)) {
-              return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot modify agent outside assigned jurisdiction." });
-            }
+        const headers = agentSheet.getRange(1, 1, 1, agentSheet.getLastColumn()).getValues()[0].map(h => String(h || "").trim().toLowerCase());
+        const idIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+        const nameIdx = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+        const phoneIdx = headers.findIndex(h => h.includes("phone") || h.includes("mobile"));
+        const distIdx = headers.indexOf("district");
+        const blockIdx = headers.findIndex(h => h.includes("block") || h.includes("village"));
+        const photoIdx = headers.findIndex(h => h.includes("photo") || h.includes("avatar"));
+        const statusIdx = headers.indexOf("status");
 
-            if (payload.district || payload.block) {
-              var newAgDist = payload.district || existingDist;
-              var newAgBlock = payload.block || existingBlock;
-              if (!canUserAccessBlock(session, newAgDist, newAgBlock)) {
-                return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot reassign agent outside jurisdiction." });
-              }
-            }
-
-            var rNum = i + 1;
-            if (payload.name) agentSheet.getRange(rNum, 2).setValue(sanitizeCell(payload.name));
-            if (payload.phone) agentSheet.getRange(rNum, 3).setValue(validatePhoneNumber(payload.phone) || "");
-            if (payload.district) agentSheet.getRange(rNum, 4).setValue(sanitizeCell(payload.district));
-            if (payload.block) agentSheet.getRange(rNum, 5).setValue(sanitizeCell(payload.block));
-            if (payload.status) agentSheet.getRange(rNum, 7).setValue(sanitizeCell(payload.status));
-
-            invalidateScriptCache(["AGENTS_LIST"]);
-            logAuditDirect("AGENT_UPDATED", "Updated agent: " + (payload.name || agId), "Agents", agId, "Success", session.username, session.role);
-            return sendJsonResponse({ success: true, message: "Agent updated." });
+        const data = agentSheet.getDataRange().getValues();
+        for (let i = 1; i < data.length; i++) {
+          const rowId = String(data[i][idIdx] || "");
+          const rowName = String(data[i][nameIdx] || "");
+          if (rowId === String(id) || (oldName && rowName.toLowerCase() === oldName.toLowerCase()) || (payload.name && rowName.toLowerCase() === String(payload.name).toLowerCase())) {
+            const rowNum = i + 1;
+            if (payload.name && nameIdx !== -1) agentSheet.getRange(rowNum, nameIdx + 1).setValue(sanitizeCell(payload.name));
+            if (phone && phoneIdx !== -1) agentSheet.getRange(rowNum, phoneIdx + 1).setValue(sanitizeCell(phone));
+            if (district && distIdx !== -1) agentSheet.getRange(rowNum, distIdx + 1).setValue(sanitizeCell(district));
+            if (block && blockIdx !== -1) agentSheet.getRange(rowNum, blockIdx + 1).setValue(sanitizeCell(block));
+            if (photo && photoIdx !== -1) agentSheet.getRange(rowNum, photoIdx + 1).setValue(photo);
+            if (status && statusIdx !== -1) agentSheet.getRange(rowNum, statusIdx + 1).setValue(sanitizeCell(status));
+            logAuditDirect("AGENT_UPDATED", "Updated agent: " + (payload.name || id), "Agents", id, "Success");
+            return sendJsonResponse({ success: true });
           }
         }
         return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Agent not found." });
       }
 
       if (action === "deleteAgent") {
-        if (!isSuperAdmin(session)) {
-          return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Only Super Admin can delete agents." });
-        }
-        var delAgId = String(payload.id || "").trim();
-        var aData = agentSheet.getDataRange().getValues();
-        for (var ai = 1; ai < aData.length; ai++) {
-          if (String(aData[ai][0] || "").trim() === delAgId) {
-            agentSheet.deleteRow(ai + 1);
-            invalidateScriptCache(["AGENTS_LIST"]);
-            logAuditDirect("AGENT_DELETED", "Deleted agent: " + delAgId, "Agents", delAgId, "Success", session.username, session.role);
-            return sendJsonResponse({ success: true, message: "Agent removed." });
+        const id = payload.id;
+        const data = agentSheet.getDataRange().getValues();
+        const headers = data[0].map(h => String(h || "").trim().toLowerCase());
+        const idIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+        const nameIdx = headers.indexOf("name") !== -1 ? headers.indexOf("name") : 1;
+
+        for (let i = 1; i < data.length; i++) {
+          if (String(data[i][idIdx]) === String(id) || String(data[i][nameIdx]).toLowerCase() === String(payload.name || "").toLowerCase()) {
+            agentSheet.deleteRow(i + 1);
+            logAuditDirect("AGENT_DELETED", "Removed agent: " + (payload.name || id), "Agents", id, "Success");
+            return sendJsonResponse({ success: true });
           }
         }
         return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Agent not found." });
