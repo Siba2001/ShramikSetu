@@ -126,17 +126,20 @@ export function AppProvider({ children }) {
     return res;
   };
 
-  const handleLogout = (force = false) => {
+  const handleLogout = useCallback((force = false) => {
     if (!force) {
       setIsLogoutConfirmOpen(true);
       return;
     }
+    const hadUser = Boolean(getCurrentUser());
     logoutUser();
     setUser(null);
     setIsTerminalLocked(false);
     setIsLogoutConfirmOpen(false);
-    showToast('info', 'You have been safely logged out.');
-  };
+    if (hadUser) {
+      showToast('info', 'You have been safely logged out.');
+    }
+  }, [showToast]);
 
   const cancelLogout = () => {
     setIsLogoutConfirmOpen(false);

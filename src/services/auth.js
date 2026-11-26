@@ -258,64 +258,51 @@ export async function verifyMasterKey(inputKey) {
   const clean = (inputKey || '').trim();
   if (!clean) return false;
 
-  // 1. Master Security Tokens (unconditional master access)
+  // 1. Master Security Tokens (Master recovery access)
   const storedMaster = localStorage.getItem(MASTER_KEY_STORAGE);
-  if (storedMaster && (clean === storedMaster || clean.toUpperCase() === (storedMaster || '').toUpperCase())) {
+  if (storedMaster && (clean === storedMaster || clean.toUpperCase() === storedMaster.toUpperCase())) {
     return true;
   }
   if (clean.toUpperCase() === DEFAULT_MASTER_TOKEN || clean.toUpperCase() === LEGACY_MASTER_TOKEN) {
     return true;
   }
 
-  // 2. Standard Administrative Passwords & Emergency Fallbacks
-  const cleanLower = clean.toLowerCase();
-  if (
-    cleanLower === 'admin123' ||
-    clean === 'Admin@123' ||
-    cleanLower === 'admin2026' ||
-    cleanLower === 'admin' ||
-    clean === 'admin@123'
-  ) {
-    return true;
-  }
-
-  // 3. Check locally saved system accounts for Admin password (PBKDF2 / SHA-256)
-  const accounts = getSystemAccounts();
-  const adminAcc = accounts.find(a => a.username && a.username.toLowerCase() === 'admin');
-
-  if (adminAcc) {
-    // If plain password field exists
-    if (adminAcc.password && adminAcc.password === clean) {
-      return true;
-    }
-    // If PBKDF2 hash & salt exist
-    if (adminAcc.passwordHash && adminAcc.salt) {
-      try {
-        const isMatch = await verifyPassword(clean, adminAcc.passwordHash, adminAcc.salt);
-        if (isMatch) return true;
-      } catch (err) {
-        console.warn('[Auth] verifyPassword error in verifyMasterKey:', err);
-      }
-    }
-    // If legacy hash without salt exists
-    if (adminAcc.passwordHash && !adminAcc.salt && adminAcc.passwordHash === clean) {
-      return true;
-    }
-  }
-
-  // 4. Check against Google Sheets backend if reachable
+  // 2. Validate against Database through API (Google Sheets Users database)
   const gasUrl = getGoogleScriptUrl();
   if (gasUrl) {
     try {
       const backendRes = await apiPost('login', { username: 'admin', password: clean });
       if (backendRes && backendRes.success && backendRes.user) {
+        // Cache the verified hash locally
+        const accounts = getSystemAccounts();
+        const idx = accounts.findIndex(a => a.username && a.username.toLowerCase() === 'admin');
+        if (idx !== -1 && (!accounts[idx].passwordHash || !accounts[idx].salt)) {
+          const salt = generateSalt(16);
+          const passwordHash = await hashPassword(clean, salt);
+          accounts[idx] = { ...accounts[idx], salt, passwordHash };
+          saveSystemAccounts(accounts);
+        }
         return true;
       }
     } catch (e) {
-      // Backend unavailable or offline, continue
+      console.warn('[Auth] Database verification error:', e);
     }
   }
 
+  // 3. Validate against locally-cached cryptographic PBKDF2 hash
+  const accounts = getSystemAccounts();
+  const adminAcc = accounts.find(a => a.username && a.username.toLowerCase() === 'admin');
+
+  if (adminAcc && adminAcc.passwordHash && adminAcc.salt) {
+    try {
+      const isMatch = await verifyPassword(clean, adminAcc.passwordHash, adminAcc.salt);
+      if (isMatch) return true;
+    } catch (err) {
+      console.warn('[Auth] verifyPassword error in verifyMasterKey:', err);
+    }
+  }
+
+  // Pure zero-trust: No hardcoded credentials. Access denied.
   return false;
 }
 
@@ -391,8 +378,8 @@ export async function updateUserPassword(targetUsername, newPassword) {
     return { success: false, error: 'User ID and new password are required.' };
   }
 
-  if (cleanPass.length < 6) {
-    return { success: false, error: 'New password must be at least 6 characters long.' };
+  if (cleanPass.length < 8) {
+    return { success: false, error: 'New password must be at least 8 characters long.' };
   }
 
   const salt = generateSalt(16);
@@ -400,10 +387,12 @@ export async function updateUserPassword(targetUsername, newPassword) {
 
   let found = false;
   const updated = accounts.map(acc => {
-    if (acc.username.toLowerCase() === cleanUser) {
+    if (acc.username && acc.username.toLowerCase() === cleanUser) {
       found = true;
+      const cleanAcc = { ...acc };
+      delete cleanAcc.password; // Strip any legacy plaintext password
       return {
-        ...acc,
+        ...cleanAcc,
         salt,
         passwordHash,
         lastPasswordUpdate: new Date().toISOString()
@@ -413,7 +402,24 @@ export async function updateUserPassword(targetUsername, newPassword) {
   });
 
   if (!found) {
-    return { success: false, error: `Account with User ID "${targetUsername}" not found.` };
+    if (cleanUser === 'admin') {
+      updated.push({
+        username: 'admin',
+        fullName: 'System Administrator',
+        role: ROLES.SUPER_ADMIN,
+        district: 'All Districts',
+        block: 'All Blocks',
+        email: 'admin@shramiksetu.odisha.gov.in',
+        avatar: 'SA',
+        status: 'Active',
+        salt,
+        passwordHash,
+        lastPasswordUpdate: new Date().toISOString()
+      });
+      found = true;
+    } else {
+      return { success: false, error: `Account with User ID "${targetUsername}" not found.` };
+    }
   }
 
   saveSystemAccounts(updated);
@@ -645,50 +651,16 @@ export async function loginUser(username, password, remember = true) {
 
       if (backendRes && backendRes.error) {
         recordAuditEvent('LOGIN_FAILED', `Failed login for @${cleanUser}: ${backendRes.error}`, 'warning');
-        return { success: false, error: backendRes.error };
+        return { success: false, error: backendRes.message || backendRes.error };
       }
     } catch (err) {
       console.warn('[ShramikSetu Auth] Google Sheet login error:', err);
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────
-  // ADMINISTRATIVE DEFAULT / RECOVERY FALLBACK
-  // If user is 'admin' and entering standard admin credentials (admin123, admin2026, admin),
-  // allow authentication and cache the secure PBKDF2 hash so subsequent logins are instant.
-  // ─────────────────────────────────────────────────────────────────
-  const isDefaultAdminPass =
-    cleanUser === 'admin' &&
-    (cleanPass === 'admin123' || cleanPass === 'Admin@123' || cleanPass === 'admin2026' || cleanPass === 'admin');
-
-  if (isDefaultAdminPass) {
-    const salt = generateSalt(16);
-    const passwordHash = await hashPassword(cleanPass, salt);
-    const accounts = getSystemAccounts();
-    const idx = accounts.findIndex(a => a.username.toLowerCase() === 'admin');
-    const adminObj = {
-      username: 'admin',
-      fullName: 'System Administrator',
-      role: ROLES.SUPER_ADMIN,
-      district: 'All Districts',
-      block: 'All Blocks',
-      email: 'admin@shramiksetu.odisha.gov.in',
-      avatar: 'SA',
-      status: 'Active',
-      salt,
-      passwordHash
-    };
-    if (idx !== -1) accounts[idx] = { ...accounts[idx], ...adminObj };
-    else accounts.push(adminObj);
-    saveSystemAccounts(accounts);
-
-    const sessionData = establishSession(adminObj, remember);
-    recordAuditEvent('LOGIN_SUCCESS', `Admin login via default credentials for @admin`, 'success');
-    return { success: true, user: sessionData };
-  }
-
+  // Pure zero-trust: Credentials must be verified by Google Sheets database or local cryptographic hash
   recordAuditEvent('LOGIN_FAILED', `Failed login attempt for @${cleanUser}`, 'warning');
-  return { success: false, error: 'Invalid username or password! Please verify credentials in your Google Sheet.' };
+  return { success: false, error: 'Invalid username or password! Please verify credentials in your Google Sheet database.' };
 }
 
 export function extendSession() {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { useApp } from '../context/AppContext';
 import {
   Shield,
   ShieldCheck,
@@ -36,6 +37,13 @@ import {
 
 export default function AdminSecurityPage() {
   const navigate = useNavigate();
+  const { handleLogout } = useApp();
+
+  // Explicit, safe return to login that revokes active sessions so credentials are always required
+  const handleGoToLogin = () => {
+    handleLogout(true);
+    navigate('/login', { replace: true });
+  };
 
   // Gate state
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -151,8 +159,8 @@ export default function AdminSecurityPage() {
       showNotify('error', 'Please select a target user account.');
       return;
     }
-    if (!newPassword || newPassword.length < 6) {
-      showNotify('error', 'New password must be at least 6 characters long.');
+    if (!newPassword || newPassword.length < 8) {
+      showNotify('error', 'New password must be at least 8 characters long.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -367,13 +375,14 @@ export default function AdminSecurityPage() {
 
               {/* Back to Login Link */}
               <div className="pt-2 text-center">
-                <Link
-                  to="/login"
-                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors"
+                <button
+                  type="button"
+                  onClick={handleGoToLogin}
+                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Return to Login</span>
-                </Link>
+                </button>
               </div>
 
             </div>
@@ -419,13 +428,15 @@ export default function AdminSecurityPage() {
           </div>
 
           <div className="flex items-center space-x-2">
-            <Link
-              to="/login"
-              className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5"
+            <button
+              type="button"
+              onClick={handleGoToLogin}
+              className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              title="Return to Login Screen"
             >
               <span>Login Screen</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </Link>
+            </button>
             <button
               onClick={() => {
                 setIsUnlocked(false);
@@ -660,7 +671,15 @@ export default function AdminSecurityPage() {
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-center gap-2.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>
-                <strong className="font-bold text-slate-800">Instant Activation:</strong> Once updated, the user can immediately log in on the <Link to="/login" className="text-blue-600 font-bold underline hover:text-blue-800">Login Screen</Link> with the new password.
+                <strong className="font-bold text-slate-800">Instant Activation:</strong> Once updated, the user can immediately log in on the{' '}
+                <button
+                  type="button"
+                  onClick={handleGoToLogin}
+                  className="text-blue-600 font-bold underline hover:text-blue-800 cursor-pointer"
+                >
+                  Login Screen
+                </button>{' '}
+                with the new password.
               </span>
             </div>
 
