@@ -269,9 +269,8 @@ export default function AdminSecurityPage() {
         <div className="absolute top-1/4 -left-32 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 -right-32 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className={`w-full max-w-md relative z-10 transition-all duration-300 ${
-          gateShaking ? 'animate-shake-soft' : ''
-        } ${gateSuccess ? 'scale-[1.01]' : ''}`}>
+        <div className={`w-full max-w-md relative z-10 transition-all duration-300 ${gateShaking ? 'animate-shake-soft' : ''
+          } ${gateSuccess ? 'scale-[1.01]' : ''}`}>
 
           {/* Main Card matching Divy-Impex image */}
           <div className="bg-[#0e1a38] rounded-3xl border border-slate-700/60 shadow-2xl overflow-hidden backdrop-blur-xl">
@@ -346,13 +345,12 @@ export default function AdminSecurityPage() {
                 <button
                   type="submit"
                   disabled={gateLoading || gateSuccess}
-                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white transition-all duration-300 shadow-md cursor-pointer active:scale-[0.98] ${
-                    gateSuccess
-                      ? 'bg-emerald-600 hover:bg-emerald-600 shadow-emerald-500/30 animate-success-pop'
-                      : gateLoading
-                        ? 'bg-[#16274e] animate-glow-pulse shadow-blue-900/40'
-                        : 'bg-[#0e1a38] hover:bg-[#16274e] active:bg-[#091227] hover:shadow-lg hover:-translate-y-0.5'
-                  }`}
+                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white transition-all duration-300 shadow-md cursor-pointer active:scale-[0.98] ${gateSuccess
+                    ? 'bg-emerald-600 hover:bg-emerald-600 shadow-emerald-500/30 animate-success-pop'
+                    : gateLoading
+                      ? 'bg-[#16274e] animate-glow-pulse shadow-blue-900/40'
+                      : 'bg-[#0e1a38] hover:bg-[#16274e] active:bg-[#091227] hover:shadow-lg hover:-translate-y-0.5'
+                    }`}
                 >
                   {gateSuccess ? (
                     <div className="flex items-center gap-2 animate-fade-scale">
@@ -458,15 +456,14 @@ export default function AdminSecurityPage() {
         {/* Top Middle Floating Notification for All Message Types */}
         {notification && (
           <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-fade-scale max-w-lg w-auto px-4">
-            <div className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md transition-all ${
-              notification.type === 'success'
-                ? 'bg-emerald-600 text-white border-emerald-400/80 shadow-emerald-950/25'
-                : notification.type === 'error'
-                  ? 'bg-rose-600 text-white border-rose-400/80 shadow-rose-950/25'
-                  : notification.type === 'warning'
-                    ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-950/20'
-                    : 'bg-[#0b1329] text-white border-slate-700 shadow-slate-950/40'
-            }`}>
+            <div className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md transition-all ${notification.type === 'success'
+              ? 'bg-emerald-600 text-white border-emerald-400/80 shadow-emerald-950/25'
+              : notification.type === 'error'
+                ? 'bg-rose-600 text-white border-rose-400/80 shadow-rose-950/25'
+                : notification.type === 'warning'
+                  ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-950/20'
+                  : 'bg-[#0b1329] text-white border-slate-700 shadow-slate-950/40'
+              }`}>
               {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />}
               {notification.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-100 shrink-0" />}
               {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-slate-950 shrink-0" />}

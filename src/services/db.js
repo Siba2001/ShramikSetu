@@ -1,6 +1,12 @@
-import { INITIAL_DISTRICTS } from '../data/locationData';
+﻿import { INITIAL_DISTRICTS } from '../data/locationData';
 import { GOOGLE_SCRIPT_WEB_APP_URL } from '../config/backendConfig';
-import { apiGet, apiPost } from './api';
+import {
+  apiGet,
+  apiPost,
+  fetchDashboardSummaryApi,
+  fetchApplicationsPagedApi,
+  updateApplicationStatusApi
+} from './api';
 
 const LOCAL_STORAGE_KEY = 'shramik_setu_applications_v2';
 const DISTRICTS_STORAGE_KEY = 'shramik_setu_districts_v1';
@@ -154,9 +160,6 @@ export function loadApplications() {
       return true;
     }).map(normalizeApplication);
 
-    if (cleaned.length !== list.length) {
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cleaned));
-    }
     return cleaned;
   } catch (e) {
     console.error('Failed to load applications from localStorage:', e);
@@ -169,9 +172,17 @@ export function loadApplications() {
  */
 export function saveApplications(apps) {
   try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps));
+    const list = Array.isArray(apps) ? apps.map(normalizeApplication) : [];
+    // Protect localStorage quota (~5MB). If list is massive (e.g. 5,000+), cache the most recent 1,500 records
+    const toStore = list.length > 1500 ? list.slice(0, 1500) : list;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(toStore));
   } catch (e) {
-    console.error('Failed to save applications:', e);
+    console.warn('LocalStorage quota warning - storing compact cache:', e.message);
+    try {
+      if (Array.isArray(apps)) {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(apps.slice(0, 500).map(normalizeApplication)));
+      }
+    } catch (inner) { }
   }
 }
 
@@ -512,6 +523,44 @@ export async function deleteApplication(id, extra = {}) {
 }
 
 /**
+ * TARGETED STATUS UPDATE (Fast, column-targeted, zero full database refresh required)
+ */
+export async function updateApplicationStatusTargeted(id, status, remarks, serviceType, user = 'Operator', role = 'Staff') {
+  const apps = loadApplications();
+  const index = apps.findIndex(a => a.id === id);
+  let updatedRecord = null;
+
+  if (index !== -1) {
+    apps[index] = {
+      ...apps[index],
+      status,
+      remarks: remarks !== undefined ? remarks : apps[index].remarks,
+      officer: remarks !== undefined ? remarks : apps[index].officer,
+      updatedAt: new Date().toISOString()
+    };
+    saveApplications(apps);
+    clearPagedApplicationsCache();
+    updatedRecord = apps[index];
+  }
+
+  // Send lightweight targeted call to backend
+  try {
+    const res = await updateApplicationStatusApi({
+      id,
+      status,
+      remarks,
+      serviceType: serviceType || (updatedRecord?.serviceType),
+      user,
+      role
+    });
+    return { success: true, record: updatedRecord, backendRes: res };
+  } catch (err) {
+    console.warn('Targeted status backend update notice:', err);
+    return { success: true, record: updatedRecord };
+  }
+}
+
+/**
  * Batch import applications (from Excel/CSV)
  */
 export async function batchImportApplications(items) {
@@ -546,10 +595,340 @@ export async function batchImportApplications(items) {
 }
 
 /**
- * Fetch latest data from Google Sheet Web App
- * Real-time synchronization directly from the Google Sheet database
+ * HIGH-SPEED PRE-AGGREGATED DASHBOARD SUMMARY
+ * Retrieves aggregated KPIs from Google Apps Script CacheService without downloading full row database.
  */
-export async function fetchFromGoogleSheet() {
+export async function fetchDashboardSummary(bypassCache = false) {
+  try {
+    const res = await fetchDashboardSummaryApi(bypassCache);
+    if (res && res.success) {
+      const rawCategoryCounts = res.categoryCounts || res.serviceStats || res.serviceCounts || {};
+      const rawBlockCounts = res.blockCounts || res.blockStats || res.blockDistribution || {};
+      const rawDistrictCounts = res.districtCounts || res.districtStats || res.districtDistribution || {};
+
+      const renewalCount = (rawCategoryCounts['Card Renewal'] || 0) + (rawCategoryCounts['card renewal'] || 0);
+      const contributionCount = rawCategoryCounts['Annual Contribution'] || 0;
+
+      const normalized = {
+        ...res,
+        categoryCounts: {
+          'New Card': rawCategoryCounts['New Card'] || rawCategoryCounts['new card'] || 0,
+          'Card Renewal': renewalCount > 0 ? renewalCount : (contributionCount > 0 ? contributionCount : 0),
+          'Annual Contribution': renewalCount > 0 ? contributionCount : 0,
+          'Marriage Benefit Apply': rawCategoryCounts['Marriage Benefit Apply'] || rawCategoryCounts['Marriage Benefit'] || 0,
+          'Maternity Benefit Apply': rawCategoryCounts['Maternity Benefit Apply'] || rawCategoryCounts['Maternity Benefit'] || 0,
+          'Death Benefit Apply': rawCategoryCounts['Death Benefit Apply'] || rawCategoryCounts['Death Benefit'] || 0,
+          'Education Assistance Apply': rawCategoryCounts['Education Assistance Apply'] || rawCategoryCounts['Education Grant'] || 0
+        },
+        serviceStats: rawCategoryCounts,
+        blockStats: rawBlockCounts,
+        blockCounts: rawBlockCounts,
+        blockDistribution: rawBlockCounts,
+        districtStats: rawDistrictCounts,
+        districtCounts: rawDistrictCounts,
+        districtDistribution: rawDistrictCounts
+      };
+
+      try {
+        localStorage.setItem(DASHBOARD_SUMMARY_STORAGE_KEY, JSON.stringify(normalized));
+      } catch (e) { }
+      return normalized;
+    }
+  } catch (err) {
+    console.warn('Dashboard summary fetch notice:', err?.message || err);
+  }
+
+  // Fallback: load cached summary from localStorage if available
+  try {
+    const cached = localStorage.getItem(DASHBOARD_SUMMARY_STORAGE_KEY);
+    if (cached) return JSON.parse(cached);
+  } catch (e) { }
+
+  return null;
+}
+
+// High-Speed In-Memory & Session Paged Cache for instantaneous (0ms) module switching
+const memoryPagedCache = new Map();
+const SESSION_CACHE_PREFIX = 'shramiksetu_paged_cache_';
+
+function buildPagedCacheKey(params = {}) {
+  return [
+    params.service || 'All',
+    params.page || 1,
+    params.pageSize || 50,
+    (params.search || '').trim().toLowerCase(),
+    params.block || 'All',
+    params.agent || 'All',
+    params.status || 'All',
+    params.fromDate || '',
+    params.toDate || ''
+  ].join('::');
+}
+
+/**
+ * Instantly retrieve cached page (0ms latency)
+ */
+export function getCachedPagedApplications(params = {}) {
+  const key = buildPagedCacheKey(params);
+  // 1. Check in-memory map
+  const mem = memoryPagedCache.get(key);
+  if (mem && (Date.now() - mem.timestamp < 180000)) { // 3 minutes validity
+    return mem.data;
+  }
+  // 2. Check sessionStorage fallback
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const raw = sessionStorage.getItem(SESSION_CACHE_PREFIX + key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && (Date.now() - parsed.timestamp < 180000)) {
+          memoryPagedCache.set(key, parsed);
+          return parsed.data;
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 3. Instant Local Cache Hydration (0ms) - Ensures clicking any module tab is instantaneous
+  try {
+    const allApps = loadApplications();
+    const service = params.service || 'All';
+    const filtered = allApps.filter(a => {
+      if (!a) return false;
+      if (service !== 'All') {
+        const isRenewal = (service === 'Card Renewal' || service === 'Annual Contribution');
+        if (isRenewal) {
+          if (a.serviceType !== 'Card Renewal' && a.serviceType !== 'Annual Contribution') return false;
+        } else if (a.serviceType !== service) {
+          return false;
+        }
+      }
+      if (params.block && params.block !== 'All' && String(a.block || '').toLowerCase() !== params.block.toLowerCase()) return false;
+      if (params.agent && params.agent !== 'All' && String(a.agent || '').toLowerCase() !== params.agent.toLowerCase()) return false;
+      if (params.status && params.status !== 'All') {
+        const st = String(a.status || '').toLowerCase();
+        const pst = params.status.toLowerCase();
+        if (pst === 'pending' && st !== 'pending' && st !== 'e-sign pending') return false;
+        else if (pst !== 'pending' && st !== pst) return false;
+      }
+      return true;
+    });
+
+    const page = params.page || 1;
+    const pageSize = params.pageSize || 50;
+    const start = (page - 1) * pageSize;
+    const pagedSlice = filtered.slice(start, start + pageSize);
+
+    const pendingCount = filtered.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
+    const inProgressCount = filtered.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
+    const queriesCount = filtered.filter(a => a.status === 'Query Raised').length;
+    const approvedCount = filtered.filter(a => a.status === 'Approved').length;
+
+    const instantData = {
+      success: true,
+      totalRecords: filtered.length,
+      page,
+      pageSize,
+      totalPages: Math.max(1, Math.ceil(filtered.length / pageSize)),
+      data: pagedSlice,
+      summary: {
+        total: filtered.length,
+        pending: pendingCount,
+        inProgress: inProgressCount,
+        queries: queriesCount,
+        approved: approvedCount
+      }
+    };
+
+    return instantData;
+  } catch (e) {}
+
+  return null;
+}
+
+/**
+ * Cache paged applications result in memory and session
+ */
+export function setCachedPagedApplications(params = {}, data) {
+  if (!data || !data.success) return;
+  const key = buildPagedCacheKey(params);
+  const entry = { data, timestamp: Date.now() };
+  memoryPagedCache.set(key, entry);
+
+  // Keep memory cache size bounded
+  if (memoryPagedCache.size > 50) {
+    const first = memoryPagedCache.keys().next().value;
+    memoryPagedCache.delete(first);
+  }
+
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(SESSION_CACHE_PREFIX + key, JSON.stringify(entry));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Clear paged applications cache on data mutation
+ */
+export function clearPagedApplicationsCache() {
+  memoryPagedCache.clear();
+  try {
+    if (typeof sessionStorage !== 'undefined') {
+      const keysToRemove = [];
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const k = sessionStorage.key(i);
+        if (k && k.startsWith(SESSION_CACHE_PREFIX)) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => sessionStorage.removeItem(k));
+    }
+  } catch (e) {}
+}
+
+/**
+ * SERVER-SIDE PAGINATED & FILTERED APPLICATION FETCHER
+ * Implements Stale-While-Revalidate (SWR) for instantaneous response (0ms) and background sync.
+ */
+export async function fetchApplicationsPaged(params = {}) {
+  const isBypass = !!params.bypassCache;
+  const cachedData = !isBypass ? getCachedPagedApplications(params) : null;
+
+  // Stale-While-Revalidate: If fresh data exists in cache, return immediately (0ms)
+  // and silently revalidate in background if older than 15 seconds
+  if (cachedData) {
+    const key = buildPagedCacheKey(params);
+    const entry = memoryPagedCache.get(key);
+    const isStale = !entry || (Date.now() - entry.timestamp > 15000);
+
+    if (isStale) {
+      fetchApplicationsPagedApi(params).then(fresh => {
+        if (fresh && fresh.success && Array.isArray(fresh.data)) {
+          fresh.data = fresh.data.filter(app => !isDeletedTombstone(app));
+          setCachedPagedApplications(params, fresh);
+          try {
+            const localApps = loadApplications();
+            let changed = false;
+            fresh.data.forEach(remoteApp => {
+              if (isDeletedTombstone(remoteApp)) return;
+              const idx = localApps.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
+              if (idx !== -1) {
+                localApps[idx] = { ...localApps[idx], ...remoteApp };
+                changed = true;
+              } else {
+                localApps.unshift(remoteApp);
+                changed = true;
+              }
+            });
+            if (changed) {
+              saveApplications(localApps);
+            }
+          } catch (e) { }
+          try {
+            window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: fresh } }));
+          } catch (e) {}
+        }
+      }).catch(() => {});
+    }
+    return cachedData;
+  }
+
+  try {
+    const res = await fetchApplicationsPagedApi(params);
+    if (res && res.success && Array.isArray(res.data)) {
+      res.data = res.data.filter(app => !isDeletedTombstone(app));
+      setCachedPagedApplications(params, res);
+      // Keep local storage synchronized with fetched live records
+      try {
+        const localApps = loadApplications();
+        let changed = false;
+        res.data.forEach(remoteApp => {
+          if (isDeletedTombstone(remoteApp)) return;
+          const idx = localApps.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
+          if (idx !== -1) {
+            localApps[idx] = { ...localApps[idx], ...remoteApp };
+            changed = true;
+          } else {
+            localApps.unshift(remoteApp);
+            changed = true;
+          }
+        });
+        if (changed) {
+          saveApplications(localApps);
+        }
+      } catch (e) { }
+      try {
+        window.dispatchEvent(new CustomEvent('shramiksetu:paged_sync', { detail: { params, data: res } }));
+      } catch (e) {}
+      return res;
+    }
+  } catch (err) {
+    console.warn('Server-side paged fetch notice:', err?.message || err);
+  }
+
+  // Graceful offline fallback: filter & slice local applications in memory
+  const apps = loadApplications();
+  const service = params.service || null;
+  const page = Math.max(1, parseInt(params.page || 1, 10));
+  const pageSize = Math.max(1, parseInt(params.pageSize || 50, 10));
+  const search = (params.search || '').trim().toLowerCase();
+  const filterBlock = (params.block || 'All').trim();
+  const filterStatus = (params.status || 'All').trim();
+
+  let filtered = apps.filter(item => {
+    if (service && service !== 'All') {
+      if (service === 'Card Renewal' || service === 'Annual Contribution') {
+        if (item.serviceType !== 'Card Renewal' && item.serviceType !== 'Annual Contribution') return false;
+      } else if (item.serviceType !== service) {
+        return false;
+      }
+    }
+    if (filterBlock !== 'All' && filterBlock !== '') {
+      if ((item.block || '').toLowerCase() !== filterBlock.toLowerCase()) return false;
+    }
+    if (filterStatus !== 'All' && filterStatus !== '') {
+      const itemSt = (item.status || '').toLowerCase();
+      const fSt = filterStatus.toLowerCase();
+      if (fSt === 'pending') {
+        if (itemSt !== 'pending' && itemSt !== 'e-sign pending') return false;
+      } else if (itemSt !== fSt) {
+        return false;
+      }
+    }
+    if (search) {
+      const match = (
+        (item.applicantName && item.applicantName.toLowerCase().includes(search)) ||
+        (item.cardNo && item.cardNo.toLowerCase().includes(search)) ||
+        (item.aadhaarNo && item.aadhaarNo.toLowerCase().includes(search)) ||
+        (item.trackNo && item.trackNo.toLowerCase().includes(search)) ||
+        (item.agent && item.agent.toLowerCase().includes(search))
+      );
+      if (!match) return false;
+    }
+    return true;
+  });
+
+  const totalRecords = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalRecords / pageSize));
+  const startIndex = (page - 1) * pageSize;
+  const pagedRecords = filtered.slice(startIndex, startIndex + pageSize);
+
+  return {
+    success: true,
+    page,
+    pageSize,
+    totalRecords,
+    totalPages,
+    data: pagedRecords,
+    isLocalFallback: true
+  };
+}
+
+/**
+ * Fetch latest data from Google Sheet Web App (Legacy / Fallback synchronization)
+ */
+export async function fetchFromGoogleSheet(serviceType = null) {
   try {
     const params = serviceType ? { service: serviceType } : {};
     const data = await apiGet('getAll', params);

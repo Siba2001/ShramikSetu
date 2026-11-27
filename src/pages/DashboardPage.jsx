@@ -23,10 +23,34 @@ import {
   Activity,
   Check,
   Users,
+  ShieldCheck,
   RotateCw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Link } from 'react-router-dom';
+
+function cleanTrendDate(raw) {
+  if (!raw || typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  // Match ISO / YYYY-MM-DD
+  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[2]}-${isoMatch[3]}`; // MM-DD
+  }
+  // Match DD-MM-YYYY or DD/MM/YYYY
+  const dmyMatch = trimmed.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+  if (dmyMatch) {
+    return `${dmyMatch[2]}-${dmyMatch[1]}`;
+  }
+  // Try parsing as Date
+  const parsed = new Date(trimmed);
+  if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${m}-${d}`;
+  }
+  return null;
+}
 
 export default function DashboardPage() {
   const { 
@@ -95,6 +119,20 @@ export default function DashboardPage() {
       return [];
     }
 
+    if (safeStats.recentDaysMap && Object.keys(safeStats.recentDaysMap).length > 0) {
+      const entries = Object.entries(safeStats.recentDaysMap)
+        .map(([date, cnt]) => {
+          const label = cleanTrendDate(date);
+          return label ? { rawDate: date, label, count: cnt } : null;
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+
+      if (entries.length > 0) {
+        return entries.slice(-10).map(e => ({ date: e.label, count: e.count }));
+      }
+    }
+
     const map = {};
     applications.forEach(a => {
       const raw = a?.applicationDate || a?.createdAt || '';
@@ -109,7 +147,7 @@ export default function DashboardPage() {
       return [{ date: todayDateStr.slice(5), count: applications.length }];
     }
     return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
-  }, [applications, todayDateStr]);
+  }, [applications, safeStats.recentDaysMap, todayDateStr]);
 
   const maxTrendCount = useMemo(() => {
     if (trendData.length === 0) return 10;
@@ -118,7 +156,7 @@ export default function DashboardPage() {
 
   // Top blocks
   const topBlocks = useMemo(() => {
-    return Object.entries(stats.blockCounts)
+    return Object.entries(safeStats.blockCounts || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
   }, [safeStats.blockCounts]);
