@@ -46,6 +46,7 @@ export default function ApplicationModulePage({
     handleUpdateStatus, 
     handleDeleteApplication,
     marriageVerifications,
+    fetchModuleApplications,
     fetchApplicationsPaged,
     showToast 
   } = useApp();
@@ -73,6 +74,34 @@ export default function ApplicationModulePage({
   // Server-side query state
   const [serverData, setServerData] = useState(null);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
+  const [loadingModule, setLoadingModule] = useState(false);
+
+  // Dedicated Module Fetcher on Tab Click (Previous architecture that immediately calls module API)
+  useEffect(() => {
+    let isMounted = true;
+    
+    // Check if we already have records in memory for this module
+    const currentModuleApps = applications.filter(a => {
+      if (serviceKey === 'Card Renewal' || serviceKey === 'Annual Contribution') {
+        return a.serviceType === 'Card Renewal' || a.serviceType === 'Annual Contribution';
+      }
+      return a.serviceType === serviceKey;
+    });
+
+    if (currentModuleApps.length === 0) {
+      setLoadingModule(true);
+    }
+
+    if (fetchModuleApplications) {
+      fetchModuleApplications(serviceKey).finally(() => {
+        if (isMounted) {
+          setLoadingModule(false);
+        }
+      });
+    }
+
+    return () => { isMounted = false; };
+  }, [serviceKey, fetchModuleApplications]);
 
   // Debounce search input (350ms) to eliminate per-keystroke stuttering
   useEffect(() => {
@@ -140,22 +169,18 @@ export default function ApplicationModulePage({
     return `Search ${title} by Name, Card, Aadhaar, Track...`;
   }, [isRenewal, isDeath, isMaternity, isNewCard, title]);
 
-  // Compute Module-specific stats (from server summary or local fallback)
-  const localModuleStats = useMemo(() => {
+  // Compute Module-specific stats directly from actual loaded module applications
+  const moduleStats = useMemo(() => {
+    if (serverData?.summary && serverData.summary.total > 0) {
+      return serverData.summary;
+    }
     const total = moduleApplications.length;
     const pending = moduleApplications.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
     const inProgress = moduleApplications.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
     const queries = moduleApplications.filter(a => a.status === 'Query Raised').length;
     const approved = moduleApplications.filter(a => a.status === 'Approved').length;
     return { total, pending, inProgress, queries, approved };
-  }, [moduleApplications]);
-
-  const moduleStats = useMemo(() => {
-    if (serverData?.summary && serverData.summary.total > 0) {
-      return serverData.summary;
-    }
-    return localModuleStats;
-  }, [serverData, localModuleStats]);
+  }, [serverData, moduleApplications]);
 
   // Local filtering (fallback when server data is not yet loaded)
   const localFilteredList = useMemo(() => {
@@ -363,15 +388,26 @@ export default function ApplicationModulePage({
                 </button>
               )}
 
-              {/* Refresh Paged Data Button */}
+              {/* Refresh Module Data Button */}
               <button
                 type="button"
-                onClick={loadPagedRecords}
-                disabled={isLoadingPage}
+                onClick={() => {
+                  setLoadingModule(true);
+                  if (fetchModuleApplications) {
+                    fetchModuleApplications(serviceKey).finally(() => {
+                      setLoadingModule(false);
+                      loadPagedRecords();
+                      showToast('success', `${title} data refreshed.`);
+                    });
+                  } else {
+                    loadPagedRecords();
+                  }
+                }}
+                disabled={isLoadingPage || loadingModule}
                 className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs flex items-center transition-all cursor-pointer disabled:opacity-50"
-                title="Reload current page from server"
+                title="Reload module records from database"
               >
-                <RotateCw className={`w-4 h-4 ${isLoadingPage ? 'animate-spin text-blue-600' : ''}`} />
+                <RotateCw className={`w-4 h-4 ${(isLoadingPage || loadingModule) ? 'animate-spin text-blue-600' : ''}`} />
               </button>
 
               {/* Download PDF Button */}
@@ -575,12 +611,13 @@ export default function ApplicationModulePage({
           </div>
 
           {/* Main Table */}
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative">
-            {isLoadingPage && (
-              <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
-                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-md border border-slate-200 text-xs font-bold text-slate-700">
-                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                  <span>Loading records...</span>
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative min-h-[240px]">
+            {(isLoadingPage || (loadingModule && moduleApplications.length === 0)) && (
+              <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex flex-col items-center justify-center z-10 gap-2.5">
+                <div className="w-9 h-9 rounded-full border-3 border-blue-200 border-t-blue-600 animate-spin" />
+                <div className="text-center">
+                  <p className="text-xs font-bold text-slate-800">Fetching {title} records...</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5">Connecting directly to official registry</p>
                 </div>
               </div>
             )}
@@ -725,18 +762,6 @@ export default function ApplicationModulePage({
                                 title="Edit Record"
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-
-                              <button
-                                onClick={() => {
-                                  if (window.confirm(`Mark ${app.applicantName} as Completed? It will be removed from active database.`)) {
-                                    onStatusChange(app.id, 'Completed');
-                                  }
-                                }}
-                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
-                                title="Mark Completed"
-                              >
-                                <CheckCircle2 className="w-3.5 h-3.5" />
                               </button>
 
                               <button

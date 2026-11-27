@@ -874,7 +874,6 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                       <option value="In Progress">In Progress</option>
                       <option value="Query Raised">Query Raised (Q)</option>
                       <option value="Approved">Approved</option>
-                      <option value="Completed">Completed</option>
                       <option value="Bank Reject">Bank Reject</option>
                     </select>
                   </div>

@@ -10,6 +10,7 @@ const AdminSecurityPage = lazy(() => import('./pages/AdminSecurityPage'));
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ApplicationModulePage = lazy(() => import('./pages/ApplicationModulePage'));
 const AgentsPage = lazy(() => import('./pages/data/AgentsPage'));
+const AgentPaymentsPage = lazy(() => import('./pages/AgentPaymentsPage'));
 
 // Icons
 import { 
@@ -148,6 +149,9 @@ export default function App() {
               {/* 3. Agent Management */}
               <Route path="data/agents" element={<AgentsPage />} />
               <Route path="agents" element={<Navigate to="/data/agents" replace />} />
+
+              {/* 4. Payment Management */}
+              <Route path="payments/agent-payments" element={<AgentPaymentsPage />} />
 
               {/* Catch-all */}
               <Route path="*" element={<Navigate to="/dashboard" replace />} />

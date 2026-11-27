@@ -19,7 +19,8 @@ import {
   ExternalLink,
   ChevronLeft,
   X,
-  LogOut
+  LogOut,
+  Wallet
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 
@@ -40,6 +41,9 @@ export default function Sidebar() {
   // Submenu expansion states
   const [appsMenuOpen, setAppsMenuOpen] = useState(
     location.pathname.startsWith('/applications') || location.pathname === '/'
+  );
+  const [agentMenuOpen, setAgentMenuOpen] = useState(
+    location.pathname.startsWith('/data/agents') || location.pathname.startsWith('/payments') || location.pathname.startsWith('/agents')
   );
 
   const closeMobile = () => setMobileSidebarOpen(false);
@@ -258,24 +262,55 @@ export default function Sidebar() {
             )}
           </div>
 
-          {/* MANAGEMENT Section */}
+          {/* AGENT MANAGEMENT Section */}
           <div className="space-y-1">
-            <div className={`px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 overflow-hidden transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 h-0 mb-0' : 'opacity-100 h-auto'}`}>
-              MANAGEMENT
-            </div>
+            {!sidebarCollapsed ? (
+              <button
+                type="button"
+                onClick={() => setAgentMenuOpen(!agentMenuOpen)}
+                className="w-full flex items-center justify-between px-3 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-slate-300 py-1"
+              >
+                <span>AGENT MANAGEMENT</span>
+                {agentMenuOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+              </button>
+            ) : (
+              <div className="w-full border-t border-slate-800 my-2" />
+            )}
 
-            {/* Agent Management */}
-            <NavLink
-              to="/data/agents"
-              onClick={closeMobile}
-              className={getNavLinkClass}
-              title="Agent Management"
-            >
-              <div className="flex items-center space-x-3 min-w-0">
-                <UserCheck className="w-4 h-4 shrink-0 text-amber-400" />
-                <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Agent Management</span>
+            {/* Submodule Links */}
+            {(agentMenuOpen || sidebarCollapsed) && (
+              <div className="space-y-1">
+                {/* 1. Agent Management */}
+                <NavLink
+                  to="/data/agents"
+                  onClick={closeMobile}
+                  className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
+                  title="Agent Management"
+                >
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <UserCheck className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Agent Management</span>
+                  </div>
+                </NavLink>
+
+                {/* 2. Agent Payments */}
+                <NavLink
+                  to="/payments/agent-payments"
+                  onClick={closeMobile}
+                  className={sidebarCollapsed ? getNavLinkClass : getSubNavLinkClass}
+                  title="Agent Payments"
+                >
+                  <div className="flex items-center space-x-2.5 min-w-0">
+                    <Wallet className="w-4 h-4 shrink-0 text-emerald-400" />
+                    <span className={`overflow-hidden whitespace-nowrap transition-all duration-300 ease-in-out ${sidebarCollapsed ? 'opacity-0 max-w-0' : 'opacity-100 max-w-[160px]'}`}>Agent Payments</span>
+                  </div>
+                </NavLink>
               </div>
-            </NavLink>
+            )}
           </div>
 
         </div>

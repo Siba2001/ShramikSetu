@@ -42,6 +42,8 @@ var SHEET_MARRIAGE_VERIFY = "Marriage_Verify_List";
 var SHEET_EDUCATION = "Education_Assistance";
 var SHEET_USERS = "Users";
 var SHEET_AGENTS = "Agents";
+var SHEET_AGENT_DUES = "Agent_Dues";
+var SHEET_AGENT_PAYMENTS = "Agent_Payments";
 var SHEET_LOGS = "Activity_Logs";
 var SHEET_SESSIONS = "Active_Sessions";
 
@@ -207,6 +209,35 @@ var HEADERS_AGENTS = [
   "Block",
   "Photo",
   "Status",
+  "Created At"
+];
+
+var HEADERS_AGENT_DUES = [
+  "Due ID",
+  "Agent ID",
+  "Agent Name",
+  "Due Amount",
+  "Due Date",
+  "Description",
+  "Remarks",
+  "Status",
+  "Remaining Amount",
+  "Created By",
+  "Created At",
+  "Updated At"
+];
+
+var HEADERS_AGENT_PAYMENTS = [
+  "Payment ID",
+  "Agent ID",
+  "Agent Name",
+  "Amount",
+  "Payment Date",
+  "Payment Method",
+  "Transaction Reference",
+  "Remarks",
+  "Allocated Dues",
+  "Created By",
   "Created At"
 ];
 
@@ -1482,6 +1513,9 @@ function doPost(e) {
       action === "addMarriageVerify" ||
       action === "updateMarriageVerify" ||
       action === "deleteMarriageVerify" ||
+      action === "addAgentDue" ||
+      action === "receiveAgentPayment" ||
+      action === "reverseAgentTransaction" ||
       action === "logActivity"
     );
 
@@ -1925,24 +1959,29 @@ function processPostRequest(postData) {
           var sData = sSheet.getDataRange().getValues();
           if (sData.length <= 1) continue;
 
-        for (let i = 1; i < data.length; i++) {
-          if (String(data[i][0]) === String(id) || (payload.trackNo && String(data[i][3]) === String(payload.trackNo))) {
-            foundRow = i + 1;
-            break;
-          }
-        }
+          var headers = sData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
+          var idColIdx = headers.indexOf("id") !== -1 ? headers.indexOf("id") : 0;
+          var trackColIdx = headers.findIndex(function (h) { return h === "tracking no" || h === "track no" || h === "tracking number"; });
+          var distColIdx = headers.indexOf("district");
+          var blockColIdx = headers.indexOf("block");
 
-        // If not in primary module sheet, search all module sheets
-        if (foundRow === -1) {
-          for (let m = 0; m < MODULE_SHEETS.length; m++) {
-            const altSheet = getOrCreateModuleSheet(MODULE_SHEETS[m]);
-            const altData = altSheet.getDataRange().getValues();
-            for (let i = 1; i < altData.length; i++) {
-              if (String(altData[i][0]) === String(id)) {
-                // Found in altSheet - update in-place
-                const updatedRow = formatApplicationRow(MODULE_SHEETS[m], id, payload, now);
-                altSheet.getRange(i + 1, 1, 1, updatedRow.length).setValues([updatedRow]);
-                return sendJsonResponse({ success: true, message: "Updated in " + MODULE_SHEETS[m] });
+          for (var r = 1; r < sData.length; r++) {
+            var row = sData[r];
+            var isMatch = false;
+
+            if (idToMatch && String(row[idColIdx] || "").trim() === idToMatch) {
+              isMatch = true;
+            } else if (trackToMatch && trackColIdx !== -1 && String(row[trackColIdx] || "").trim() === trackToMatch) {
+              isMatch = true;
+            }
+
+            if (isMatch) {
+              var recDist = distColIdx !== -1 ? String(row[distColIdx] || "") : "";
+              var recBlock = blockColIdx !== -1 ? String(row[blockColIdx] || "") : "";
+
+              if (!canUserAccessBlock(session, recDist, recBlock)) {
+                logAuditDirect("PERMISSION_DENIED", "Attempted application update outside jurisdiction", sName, idToMatch || trackToMatch, "Denied", session.username, session.role);
+                return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot modify record outside assigned jurisdiction." });
               }
 
               if (payload.district || payload.block) {
@@ -1953,35 +1992,201 @@ function processPostRequest(postData) {
                 }
               }
 
-        // In-place update
-        const updatedRow = formatApplicationRow(targetSheetName, id, payload, now);
-        sheet.getRange(foundRow, 1, 1, updatedRow.length).setValues([updatedRow]);
+              // Merge partial payload updates with existing row values
+              var mergedRow = mergeApplicationRow(sName, headers, row, payload, now);
+              sSheet.getRange(r + 1, 1, 1, mergedRow.length).setValues([mergedRow]);
+              bumpDataEpoch();
 
-        logAuditDirect("APPLICATION_UPDATED", "Updated record: " + id, targetSheetName, id, "Success");
-        return sendJsonResponse({ success: true, message: "Updated in " + targetSheetName });
-      }
-
-      // B3. DELETE RECORD
-      if (action === "delete") {
-        const id = String(payload.id || "").trim();
-        const trackNo = String(payload.trackNo || "").trim();
-        for (let m = 0; m < MODULE_SHEETS.length; m++) {
-          const sheet = getOrCreateModuleSheet(MODULE_SHEETS[m]);
-          const data = sheet.getDataRange().getValues();
-          for (let i = 1; i < data.length; i++) {
-            const rowId = String(data[i][0] || "").trim();
-            const rowTrack = String(data[i][3] || "").trim();
-            if ((id && rowId === id) || (trackNo && rowTrack === trackNo)) {
-              sheet.deleteRow(i + 1);
-              logAuditDirect("APPLICATION_DELETED", "Deleted: " + (id || trackNo), MODULE_SHEETS[m], id, "Success");
-              return sendJsonResponse({ success: true, message: "Record removed from " + MODULE_SHEETS[m] });
+              logAuditDirect("APPLICATION_UPDATED", "Updated record " + (row[idColIdx] || idToMatch), sName, row[idColIdx] || idToMatch, "Success", session.username, session.role);
+              return sendJsonResponse({ success: true, message: "Record updated successfully." });
             }
           }
         }
-        return sendJsonResponse({ success: false, error: "Record not found" });
+
+        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found in database." });
       }
 
-      // B4. BATCH IMPORT (Auto-sorts records into their respective module sheets)
+      if (action === "delete") {
+        if (!session || (!isSuperAdmin(session) && !isDistrictOperator(session) && !isBlockOperator(session))) {
+          logAuditDirect("PERMISSION_DENIED", "Unauthorized role attempted application deletion", "Database", String(payload.id || "-"), "Denied", session ? session.username : "Anonymous", session ? session.role : "None");
+          return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Application deletion requires authorized operator credentials." });
+        }
+
+        var delId = String(payload.id || "").trim();
+        var delTrack = String(payload.trackNo || "").trim();
+        var delCard = String(payload.cardNo || "").trim();
+        var delAadhaar = String(payload.aadhaarNo || "").trim().replace(/\s+/g, '');
+        var delName = String(payload.applicantName || "").trim().toLowerCase();
+        var delBlock = String(payload.block || "").trim().toLowerCase();
+        var delService = payload.serviceType ? getSheetNameForService(payload.serviceType) : null;
+
+        if (!delId && !delTrack && !delCard && !delAadhaar && !delName) {
+          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record identifier (Tracking No, ID, Card No, or Aadhaar) is required." });
+        }
+
+        var candidateSheets = [];
+        if (delService) {
+          candidateSheets.push(delService);
+        }
+        MODULE_SHEETS.forEach(function (s) {
+          if (candidateSheets.indexOf(s) === -1) candidateSheets.push(s);
+        });
+
+        for (var m = 0; m < candidateSheets.length; m++) {
+          var dSheet = getOrCreateModuleSheet(candidateSheets[m]);
+          var dData = dSheet.getDataRange().getValues();
+          if (dData.length <= 1) continue;
+
+          var dHeaders = dData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
+          var dIdIdx = dHeaders.indexOf("id");
+          var dTrackIdx = dHeaders.findIndex(function (h) { 
+            return h === "tracking no" || h === "track no" || h === "tracking number" || h === "track number" || h === "tracking" || h.indexOf("track") !== -1; 
+          });
+          var dCardIdx = dHeaders.findIndex(function (h) { 
+            return h === "nirman shramik card no" || h === "card no" || h === "shramik card no" || h === "card number" || h.indexOf("card") !== -1; 
+          });
+          var dAadhaarIdx = dHeaders.findIndex(function (h) {
+            return h === "aadhaar no" || h === "aadhaar number" || h === "aadhaar" || h === "aadhar no" || h.indexOf("aadhaar") !== -1 || h.indexOf("aadhar") !== -1;
+          });
+          var dNameIdx = dHeaders.findIndex(function (h) {
+            return h === "applicant name" || h === "card holder name" || h === "beneficiary name" || h === "name" || h.indexOf("name") !== -1;
+          });
+          var distColIdx = dHeaders.indexOf("district");
+          var blockColIdx = dHeaders.indexOf("block");
+
+          for (var dr = 1; dr < dData.length; dr++) {
+            var rowMatch = false;
+
+            // 1. Primary check: Unique Tracking Number (most specific)
+            if (delTrack && dTrackIdx !== -1) {
+              var rowTrack = String(dData[dr][dTrackIdx] || "").trim();
+              if (rowTrack && (rowTrack.toLowerCase() === delTrack.toLowerCase() || rowTrack.replace(/\s+/g, '') === delTrack.replace(/\s+/g, ''))) {
+                rowMatch = true;
+              }
+            }
+
+            // 2. Exact ID match (only if ID column actually exists in sheet)
+            if (!rowMatch && delId && dIdIdx !== -1) {
+              var rowId = String(dData[dr][dIdIdx] || "").trim();
+              if (rowId && rowId.toLowerCase() === delId.toLowerCase()) {
+                rowMatch = true;
+              }
+            }
+
+            // 3. Card Number match
+            if (!rowMatch && delCard && dCardIdx !== -1) {
+              var rowCard = String(dData[dr][dCardIdx] || "").trim();
+              if (rowCard && rowCard.toLowerCase() === delCard.toLowerCase()) {
+                rowMatch = true;
+              }
+            }
+
+            // 4. Aadhaar Number match
+            if (!rowMatch && delAadhaar && dAadhaarIdx !== -1) {
+              var rowAadh = String(dData[dr][dAadhaarIdx] || "").trim().replace(/\s+/g, '');
+              if (rowAadh && rowAadh === delAadhaar) {
+                rowMatch = true;
+              }
+            }
+
+            // 5. Name + Block composite match
+            if (!rowMatch && delName && delBlock && dNameIdx !== -1 && blockColIdx !== -1) {
+              var rowName = String(dData[dr][dNameIdx] || "").trim().toLowerCase();
+              var rowBlock = String(dData[dr][blockColIdx] || "").trim().toLowerCase();
+              if (rowName === delName && rowBlock === delBlock) {
+                rowMatch = true;
+              }
+            }
+
+            if (rowMatch) {
+              if (!isSuperAdmin(session)) {
+                var rowDist = distColIdx !== -1 ? String(dData[dr][distColIdx] || "").trim() : "";
+                var rowBlock = blockColIdx !== -1 ? String(dData[dr][blockColIdx] || "").trim() : "";
+                if (!canUserAccessBlock(session, rowDist, rowBlock)) {
+                  logAuditDirect("PERMISSION_DENIED", "Operator attempted deletion outside assigned territory", candidateSheets[m], delId || delTrack, "Denied", session.username, session.role);
+                  return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Deletion outside assigned geographic jurisdiction is denied." });
+                }
+              }
+
+              dSheet.deleteRow(dr + 1);
+              bumpDataEpoch();
+              logAuditDirect("APPLICATION_DELETED", "Deleted application " + (delTrack || delId || delCard || delName), candidateSheets[m], delTrack || delId || delCard, "Success", session.username, session.role);
+              return sendJsonResponse({ success: true, message: "Record removed successfully." });
+            }
+          }
+        }
+        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found." });
+      }
+
+      if (action === "updateStatus") {
+        var id = String(payload.id || "").trim();
+        var trackNo = (!id && payload.trackNo) ? String(payload.trackNo).trim() : "";
+        var newStatus = validateStatusValue(payload.status);
+        var remarks = sanitizeCell(payload.remarks || payload.officer || "");
+        var serviceType = payload.serviceType || "";
+
+        if (!id && !trackNo) {
+          return sendJsonResponse({ success: false, error: "MISSING_IDENTIFIER", message: "Record ID is required." });
+        }
+        if (!newStatus) {
+          return sendJsonResponse({ success: false, error: "INVALID_STATUS", message: "Specified status value is not permitted." });
+        }
+
+        var candidateSheets = serviceType ? [getSheetNameForService(serviceType)] : MODULE_SHEETS;
+        candidateSheets = candidateSheets.filter(Boolean);
+
+        for (var cs = 0; cs < candidateSheets.length; cs++) {
+          var cName = candidateSheets[cs];
+          var cSheet = getOrCreateModuleSheet(cName);
+          var cData = cSheet.getDataRange().getValues();
+          if (cData.length <= 1) continue;
+
+          var cHeaders = cData[0].map(function (h) { return String(h || "").trim().toLowerCase(); });
+          var idIdx = cHeaders.indexOf("id") !== -1 ? cHeaders.indexOf("id") : 0;
+          var trackIdx = cHeaders.findIndex(function (h) { return h === "tracking no" || h === "track no"; });
+          var distIdx = cHeaders.indexOf("district");
+          var blockIdx = cHeaders.indexOf("block");
+          var statusCol = cHeaders.indexOf("status") + 1;
+          var remarksCol = cHeaders.findIndex(function (h) { return h.includes("remark") || h.includes("officer"); }) + 1;
+          var updatedCol = cHeaders.findIndex(function (h) { return h.includes("updated"); }) + 1;
+
+          for (var cr = 1; cr < cData.length; cr++) {
+            var rowMatch = false;
+            if (id && String(cData[cr][idIdx] || "").trim() === id) rowMatch = true;
+            else if (trackNo && trackIdx !== -1 && String(cData[cr][trackIdx] || "").trim() === trackNo) rowMatch = true;
+
+            if (rowMatch) {
+              var rowDist = distIdx !== -1 ? String(cData[cr][distIdx] || "") : "";
+              var rowBlock = blockIdx !== -1 ? String(cData[cr][blockIdx] || "") : "";
+
+              if (!canUserAccessBlock(session, rowDist, rowBlock)) {
+                logAuditDirect("PERMISSION_DENIED", "Attempted status update outside jurisdiction", cName, id || trackNo, "Denied", session.username, session.role);
+                return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Cannot change status outside assigned jurisdiction." });
+              }
+
+              var rowNum = cr + 1;
+              var prevStatus = String(cData[cr][statusCol - 1] || "");
+
+              if (statusCol > 0) cSheet.getRange(rowNum, statusCol).setValue(sanitizeCell(newStatus));
+              if (remarksCol > 0 && remarks) cSheet.getRange(rowNum, remarksCol).setValue(remarks);
+              if (updatedCol > 0) cSheet.getRange(rowNum, updatedCol).setValue(now);
+
+              bumpDataEpoch();
+              logAuditDirect("STATUS_UPDATED", "Status changed from " + prevStatus + " to " + newStatus, cName, id || trackNo, "Success", session.username, session.role, prevStatus, newStatus);
+
+              return sendJsonResponse({
+                success: true,
+                message: "Status updated to " + newStatus,
+                id: id || trackNo,
+                status: newStatus,
+                sheet: cName
+              });
+            }
+          }
+        }
+        return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found." });
+      }
+
       if (action === "batchImport") {
         if (!isSuperAdmin(session) && !isDistrictOperator(session)) {
           return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Batch import requires administrative privileges." });
@@ -2010,13 +2215,13 @@ function processPostRequest(postData) {
           var sSheet = getOrCreateModuleSheet(sheetName);
           var rows = categorized[sheetName];
           if (rows.length > 0) {
-            sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
-            totalImported += rows.length;
+            sSheet.getRange(sSheet.getLastRow() + 1, 1, rows.length, rows[0].length).setValues(rows);
           }
         });
 
-        logAuditDirect("EXCEL_IMPORT", "Batch imported " + totalImported + " records", "Import", "-", "Success");
-        return sendJsonResponse({ success: true, inserted: totalImported, message: "Batch distributed to respective module sheets" });
+        bumpDataEpoch();
+        logAuditDirect("EXCEL_IMPORT", "Batch imported " + validCount + " applications", "Import", "-", "Success", session.username, session.role);
+        return sendJsonResponse({ success: true, inserted: validCount, message: "Imported " + validCount + " records." });
       }
 
       // 4C. AGENT MANAGEMENT
@@ -2216,6 +2421,452 @@ function processPostRequest(postData) {
           }
         }
         return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Record not found." });
+      }
+
+      // ==========================================
+      // 4E. AGENT PAYMENT MANAGEMENT
+      // ==========================================
+      var duesSheet = getOrCreateSheet(SHEET_AGENT_DUES, HEADERS_AGENT_DUES);
+      var paymentsSheet = getOrCreateSheet(SHEET_AGENT_PAYMENTS, HEADERS_AGENT_PAYMENTS);
+
+      if (action === "getAgentPaymentDashboard") {
+        var duesData = duesSheet.getDataRange().getValues();
+        var paymentsData = paymentsSheet.getDataRange().getValues();
+
+        var agentMap = {}; // agentId -> { agentId, agentName, totalDue, totalPaid, lastPaymentDate }
+
+        // Process Dues (Row: Due ID, Agent ID, Agent Name, Due Amount, Due Date, Description, Remarks, Status, Remaining Amount, Created By, Created At, Updated At)
+        if (duesData.length > 1) {
+          for (var di = 1; di < duesData.length; di++) {
+            var dRow = duesData[di];
+            var dStatus = String(dRow[7] || "").trim();
+            if (dStatus === "Reversed") continue;
+
+            var aId = String(dRow[1] || "").trim();
+            var aName = String(dRow[2] || "").trim();
+            var dAmt = parseFloat(dRow[3]) || 0;
+
+            if (!agentMap[aId]) {
+              agentMap[aId] = { agentId: aId, agentName: aName, totalDue: 0, totalPaid: 0, lastPaymentDate: "-" };
+            }
+            agentMap[aId].totalDue += dAmt;
+          }
+        }
+
+        // Process Payments (Row: Payment ID, Agent ID, Agent Name, Amount, Payment Date, Payment Method, Transaction Reference, Remarks, Allocated Dues, Created By, Created At)
+        if (paymentsData.length > 1) {
+          for (var pi = 1; pi < paymentsData.length; pi++) {
+            var pRow = paymentsData[pi];
+            var pRem = String(pRow[7] || "").trim();
+            if (pRem.indexOf("[REVERSED]") !== -1) continue;
+
+            var paId = String(pRow[1] || "").trim();
+            var paName = String(pRow[2] || "").trim();
+            var pAmt = parseFloat(pRow[3]) || 0;
+            var pDate = formatCellDate(pRow[4]);
+
+            if (!agentMap[paId]) {
+              agentMap[paId] = { agentId: paId, agentName: paName, totalDue: 0, totalPaid: 0, lastPaymentDate: "-" };
+            }
+            agentMap[paId].totalPaid += pAmt;
+            if (pDate && (agentMap[paId].lastPaymentDate === "-" || pDate > agentMap[paId].lastPaymentDate)) {
+              agentMap[paId].lastPaymentDate = pDate;
+            }
+          }
+        }
+
+        var totalDue = 0;
+        var totalReceived = 0;
+        var fullyPaidCount = 0;
+        var pendingPaymentCount = 0;
+        var agentSummaries = [];
+
+        Object.keys(agentMap).forEach(function (key) {
+          var s = agentMap[key];
+          var rem = Math.max(0, s.totalDue - s.totalPaid);
+          totalDue += s.totalDue;
+          totalReceived += s.totalPaid;
+          if (s.totalDue > 0) {
+            if (rem === 0) fullyPaidCount++;
+            else pendingPaymentCount++;
+          }
+          agentSummaries.push({
+            agentId: s.agentId,
+            agentName: s.agentName,
+            totalDue: s.totalDue,
+            totalPaid: s.totalPaid,
+            remaining: rem,
+            lastPaymentDate: s.lastPaymentDate
+          });
+        });
+
+        return sendJsonResponse({
+          success: true,
+          totalAgents: Object.keys(agentMap).length,
+          totalDue: totalDue,
+          totalReceived: totalReceived,
+          totalOutstanding: Math.max(0, totalDue - totalReceived),
+          fullyPaid: fullyPaidCount,
+          pendingPayment: pendingPaymentCount,
+          agentSummaries: agentSummaries
+        });
+      }
+
+      if (action === "getAgentPaymentSummary") {
+        var targetAgentId = String(payload.agentId || "").trim();
+        if (!targetAgentId) {
+          return sendJsonResponse({ success: false, error: "MISSING_AGENT_ID", message: "Agent ID is required." });
+        }
+
+        var duesData = duesSheet.getDataRange().getValues();
+        var paymentsData = paymentsSheet.getDataRange().getValues();
+
+        var totalDue = 0;
+        var totalPaid = 0;
+        var lastPaymentDate = "-";
+
+        for (var di = 1; di < duesData.length; di++) {
+          if (String(duesData[di][1] || "").trim() === targetAgentId) {
+            if (String(duesData[di][7] || "").trim() !== "Reversed") {
+              totalDue += (parseFloat(duesData[di][3]) || 0);
+            }
+          }
+        }
+
+        for (var pi = 1; pi < paymentsData.length; pi++) {
+          if (String(paymentsData[pi][1] || "").trim() === targetAgentId) {
+            if (String(paymentsData[pi][7] || "").indexOf("[REVERSED]") === -1) {
+              totalPaid += (parseFloat(paymentsData[pi][3]) || 0);
+              var pDate = formatCellDate(paymentsData[pi][4]);
+              if (pDate && (lastPaymentDate === "-" || pDate > lastPaymentDate)) {
+                lastPaymentDate = pDate;
+              }
+            }
+          }
+        }
+
+        return sendJsonResponse({
+          success: true,
+          agentId: targetAgentId,
+          totalDue: totalDue,
+          totalPaid: totalPaid,
+          outstanding: Math.max(0, totalDue - totalPaid),
+          lastPaymentDate: lastPaymentDate
+        });
+      }
+
+      if (action === "getAgentPaymentHistory") {
+        var targetAgentId = String(payload.agentId || "").trim();
+        var duesData = duesSheet.getDataRange().getValues();
+        var paymentsData = paymentsSheet.getDataRange().getValues();
+        var transactions = [];
+
+        // 1. Collect Dues
+        for (var di = 1; di < duesData.length; di++) {
+          var dRow = duesData[di];
+          if (targetAgentId && String(dRow[1] || "").trim() !== targetAgentId) continue;
+
+          transactions.push({
+            id: String(dRow[0] || ""),
+            type: "Due",
+            agentId: String(dRow[1] || ""),
+            agentName: String(dRow[2] || ""),
+            amount: parseFloat(dRow[3]) || 0,
+            date: formatCellDate(dRow[4]),
+            description: String(dRow[5] || ""),
+            remarks: String(dRow[6] || ""),
+            status: String(dRow[7] || "Open"),
+            remainingAmount: parseFloat(dRow[8]) || 0,
+            createdBy: String(dRow[9] || "Staff"),
+            createdAt: String(dRow[10] || "")
+          });
+        }
+
+        // 2. Collect Payments
+        for (var pi = 1; pi < paymentsData.length; pi++) {
+          var pRow = paymentsData[pi];
+          if (targetAgentId && String(pRow[1] || "").trim() !== targetAgentId) continue;
+
+          var pRem = String(pRow[7] || "");
+          var isReversed = pRem.indexOf("[REVERSED]") !== -1;
+
+          transactions.push({
+            id: String(pRow[0] || ""),
+            type: isReversed ? "Reversal" : "Payment",
+            agentId: String(pRow[1] || ""),
+            agentName: String(pRow[2] || ""),
+            amount: parseFloat(pRow[3]) || 0,
+            date: formatCellDate(pRow[4]),
+            method: String(pRow[5] || "Cash"),
+            reference: String(pRow[6] || ""),
+            remarks: pRem,
+            allocatedDues: String(pRow[8] || ""),
+            status: isReversed ? "Reversed" : "Completed",
+            createdBy: String(pRow[9] || "Staff"),
+            createdAt: String(pRow[10] || "")
+          });
+        }
+
+        // Sort chronologically ascending to compute running balance
+        transactions.sort(function (a, b) {
+          var da = new Date(a.date || a.createdAt).getTime() || 0;
+          var db = new Date(b.date || b.createdAt).getTime() || 0;
+          return da - db;
+        });
+
+        var runningBal = 0;
+        for (var t = 0; t < transactions.length; t++) {
+          var item = transactions[t];
+          if (item.type === "Due" && item.status !== "Reversed") {
+            runningBal += item.amount;
+          } else if (item.type === "Payment" && item.status !== "Reversed") {
+            runningBal = Math.max(0, runningBal - item.amount);
+          }
+          item.runningBalance = runningBal;
+        }
+
+        // Return latest first
+        transactions.reverse();
+
+        return sendJsonResponse({
+          success: true,
+          count: transactions.length,
+          transactions: transactions
+        });
+      }
+
+      if (action === "addAgentDue") {
+        var agentId = String(payload.agentId || "").trim();
+        var agentName = String(payload.agentName || "").trim();
+        var dueAmount = parseFloat(payload.dueAmount);
+        var dueDate = String(payload.dueDate || now.slice(0, 10)).trim();
+        var desc = sanitizeCell(payload.description || "");
+        var remarks = sanitizeCell(payload.remarks || "");
+
+        if (!agentId || !agentName) {
+          return sendJsonResponse({ success: false, error: "INVALID_AGENT", message: "Agent information is required." });
+        }
+        if (!dueAmount || dueAmount <= 0) {
+          return sendJsonResponse({ success: false, error: "INVALID_AMOUNT", message: "Due amount must be greater than zero." });
+        }
+
+        // Validate agent existence in Agents sheet
+        var aSheet = getOrCreateSheet(SHEET_AGENTS, HEADERS_AGENTS);
+        var aData = aSheet.getDataRange().getValues();
+        var agentExists = false;
+        for (var ai = 1; ai < aData.length; ai++) {
+          if (String(aData[ai][0] || "").trim() === agentId || String(aData[ai][1] || "").trim().toLowerCase() === agentName.toLowerCase()) {
+            agentExists = true;
+            break;
+          }
+        }
+        if (!agentExists) {
+          return sendJsonResponse({ success: false, error: "AGENT_NOT_FOUND", message: "Specified agent does not exist in registry." });
+        }
+
+        var dueId = "DUE-" + new Date().getTime();
+        var createdBy = (session && (session.fullName || session.username)) || "Administrator";
+
+        duesSheet.appendRow([
+          dueId,
+          agentId,
+          agentName,
+          dueAmount,
+          dueDate,
+          desc,
+          remarks,
+          "Open",
+          dueAmount, // Remaining amount initially equals full due amount
+          createdBy,
+          now,
+          now
+        ]);
+
+        logAuditDirect("AGENT_DUE_ADDED", "Added due of INR " + dueAmount + " for " + agentName, "Payments", dueId, "Success", session.username, session.role);
+        return sendJsonResponse({ success: true, dueId: dueId, message: "Due amount added successfully." });
+      }
+
+      if (action === "receiveAgentPayment") {
+        var agentId = String(payload.agentId || "").trim();
+        var agentName = String(payload.agentName || "").trim();
+        var amount = parseFloat(payload.amount);
+        var paymentDate = String(payload.paymentDate || now.slice(0, 10)).trim();
+        var paymentMethod = String(payload.paymentMethod || "Cash").trim();
+        var txnRef = sanitizeCell(payload.transactionReference || "");
+        var remarks = sanitizeCell(payload.remarks || "");
+
+        if (!agentId) {
+          return sendJsonResponse({ success: false, error: "INVALID_AGENT", message: "Agent ID is required." });
+        }
+        if (!amount || amount <= 0) {
+          return sendJsonResponse({ success: false, error: "INVALID_AMOUNT", message: "Payment amount must be greater than zero." });
+        }
+
+        // Calculate current outstanding dues
+        var duesData = duesSheet.getDataRange().getValues();
+        var totalOutstanding = 0;
+        var openDueRows = []; // { rowIndex, dueId, dueAmount, remaining, date }
+
+        for (var di = 1; di < duesData.length; di++) {
+          var dRow = duesData[di];
+          if (String(dRow[1] || "").trim() === agentId) {
+            var dStatus = String(dRow[7] || "").trim();
+            if (dStatus === "Open" || dStatus === "Partially Paid") {
+              var rem = parseFloat(dRow[8]);
+              if (isNaN(rem)) rem = parseFloat(dRow[3]) || 0;
+              if (rem > 0) {
+                totalOutstanding += rem;
+                openDueRows.push({
+                  rowNum: di + 1,
+                  dueId: String(dRow[0] || ""),
+                  remaining: rem,
+                  date: String(dRow[4] || "")
+                });
+              }
+            }
+          }
+        }
+
+        if (amount > (totalOutstanding + 0.01)) {
+          return sendJsonResponse({
+            success: false,
+            error: "OVERPAYMENT",
+            message: "Payment amount (INR " + amount + ") cannot exceed total outstanding balance (INR " + totalOutstanding.toFixed(2) + ")."
+          });
+        }
+
+        // Sort oldest first (FIFO Allocation)
+        openDueRows.sort(function (a, b) {
+          return (new Date(a.date).getTime() || 0) - (new Date(b.date).getTime() || 0);
+        });
+
+        var remainingToAllocate = amount;
+        var allocationLog = [];
+
+        for (var i = 0; i < openDueRows.length; i++) {
+          if (remainingToAllocate <= 0) break;
+          var due = openDueRows[i];
+          var allocateThis = Math.min(due.remaining, remainingToAllocate);
+          var newRemaining = Math.max(0, due.remaining - allocateThis);
+          var newStatus = newRemaining === 0 ? "Paid" : "Partially Paid";
+
+          // Update Due row in-place (Col 8 = Status, Col 9 = Remaining Amount, Col 12 = Updated At)
+          duesSheet.getRange(due.rowNum, 8).setValue(newStatus);
+          duesSheet.getRange(due.rowNum, 9).setValue(newRemaining);
+          duesSheet.getRange(due.rowNum, 12).setValue(now);
+
+          allocationLog.push({ dueId: due.dueId, allocated: allocateThis, remaining: newRemaining });
+          remainingToAllocate -= allocateThis;
+        }
+
+        // Record payment in Agent_Payments
+        var paymentId = "PAY-" + new Date().getTime();
+        var createdBy = (session && (session.fullName || session.username)) || "Administrator";
+
+        paymentsSheet.appendRow([
+          paymentId,
+          agentId,
+          agentName,
+          amount,
+          paymentDate,
+          paymentMethod,
+          txnRef,
+          remarks,
+          JSON.stringify(allocationLog),
+          createdBy,
+          now
+        ]);
+
+        logAuditDirect("AGENT_PAYMENT_RECEIVED", "Received INR " + amount + " (" + paymentMethod + ") from " + agentName, "Payments", paymentId, "Success", session.username, session.role);
+        return sendJsonResponse({
+          success: true,
+          paymentId: paymentId,
+          allocatedDues: allocationLog,
+          message: "Payment of INR " + amount + " recorded and allocated against oldest dues."
+        });
+      }
+
+      if (action === "reverseAgentTransaction") {
+        if (!isSuperAdmin(session)) {
+          return sendJsonResponse({ success: false, error: "FORBIDDEN", message: "Transaction reversals require Super Admin authority." });
+        }
+
+        var txnId = String(payload.transactionId || "").trim();
+        var txnType = String(payload.transactionType || "").trim();
+        var reason = String(payload.reason || "").trim();
+        var agentId = String(payload.agentId || "").trim();
+
+        if (!txnId || !reason) {
+          return sendJsonResponse({ success: false, error: "INVALID_INPUT", message: "Transaction ID and mandatory reversal reason are required." });
+        }
+
+        if (txnType === "Due") {
+          // Reversing a due: mark due as Reversed
+          var dData = duesSheet.getDataRange().getValues();
+          var found = false;
+          for (var di = 1; di < dData.length; di++) {
+            if (String(dData[di][0] || "").trim() === txnId) {
+              duesSheet.getRange(di + 1, 8).setValue("Reversed");
+              var existingRemarks = String(dData[di][6] || "");
+              duesSheet.getRange(di + 1, 7).setValue(sanitizeCell(existingRemarks + " [REVERSED: " + reason + "]"));
+              duesSheet.getRange(di + 1, 9).setValue(0);
+              duesSheet.getRange(di + 1, 12).setValue(now);
+              found = true;
+              break;
+            }
+          }
+          if (!found) return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Due transaction not found." });
+
+          logAuditDirect("DUE_REVERSED", "Reversed due " + txnId + ". Reason: " + reason, "Payments", txnId, "Success", session.username, session.role);
+          return sendJsonResponse({ success: true, message: "Due transaction reversed successfully." });
+        }
+
+        if (txnType === "Payment") {
+          // Reversing a payment: mark payment as Reversed and restore allocated dues
+          var pData = paymentsSheet.getDataRange().getValues();
+          var foundPayment = null;
+          var pRowIdx = -1;
+
+          for (var pi = 1; pi < pData.length; pi++) {
+            if (String(pData[pi][0] || "").trim() === txnId) {
+              foundPayment = pData[pi];
+              pRowIdx = pi + 1;
+              break;
+            }
+          }
+
+          if (!foundPayment) {
+            return sendJsonResponse({ success: false, error: "NOT_FOUND", message: "Payment transaction not found." });
+          }
+
+          var allocJson = String(foundPayment[8] || "[]");
+          var allocations = [];
+          try { allocations = JSON.parse(allocJson); } catch (e) {}
+
+          // Restore dues
+          var dData = duesSheet.getDataRange().getValues();
+          allocations.forEach(function (alloc) {
+            for (var dj = 1; dj < dData.length; dj++) {
+              if (String(dData[dj][0] || "").trim() === alloc.dueId) {
+                var currentRem = parseFloat(dData[dj][8]) || 0;
+                var restoredRem = currentRem + (parseFloat(alloc.allocated) || 0);
+                duesSheet.getRange(dj + 1, 8).setValue("Partially Paid");
+                duesSheet.getRange(dj + 1, 9).setValue(restoredRem);
+                duesSheet.getRange(dj + 1, 12).setValue(now);
+                break;
+              }
+            }
+          });
+
+          // Mark payment row remarks
+          var oldRem = String(foundPayment[7] || "");
+          paymentsSheet.getRange(pRowIdx, 8).setValue(sanitizeCell(oldRem + " [REVERSED: " + reason + "]"));
+
+          logAuditDirect("PAYMENT_REVERSED", "Reversed payment " + txnId + ". Reason: " + reason, "Payments", txnId, "Success", session.username, session.role);
+          return sendJsonResponse({ success: true, message: "Payment reversed and dues balance restored." });
+        }
+
+        return sendJsonResponse({ success: false, error: "INVALID_TYPE", message: "Unknown transaction type." });
       }
 
       if (action === "logActivity") {

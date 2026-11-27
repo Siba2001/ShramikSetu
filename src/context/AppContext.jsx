@@ -250,6 +250,20 @@ export function AppProvider({ children }) {
     }).catch(() => {});
   }, [refreshDashboardSummary]);
 
+  // High-Speed Module-Specific Data Fetcher (Calls that specific module's sheet API)
+  const fetchModuleApplications = useCallback(async (serviceType) => {
+    try {
+      const live = await fetchFromGoogleSheet(serviceType);
+      if (live && Array.isArray(live)) {
+        setApplications(live);
+        return live;
+      }
+    } catch (e) {
+      console.warn('Module sync notice:', e);
+    }
+    return loadApplications();
+  }, []);
+
   // Intelligent Polling: Only poll lightweight dashboard summary and reference data
   useEffect(() => {
     refreshData();
@@ -389,12 +403,8 @@ export function AppProvider({ children }) {
   const handleSaveApplication = async (formData) => {
     try {
       if (applicationToEdit) {
-        const result = await dbUpdateApplication(applicationToEdit.id, formData);
-        if (result.completedAndDeleted) {
-          showToast('success', `Application for "${formData.applicantName}" marked Completed and removed from active database.`);
-        } else {
-          showToast('success', `Application for "${formData.applicantName}" updated successfully.`);
-        }
+        await dbUpdateApplication(applicationToEdit.id, formData);
+        showToast('success', `Application for "${formData.applicantName}" updated successfully.`);
       } else {
         await dbAddApplication(formData);
         showToast('success', `New application for "${formData.applicantName}" created successfully.`);
@@ -622,6 +632,7 @@ export function AppProvider({ children }) {
         dashboardSummary,
         isSummaryLoading,
         refreshDashboardSummary,
+        fetchModuleApplications,
         fetchApplicationsPaged,
         pendingSyncCount,
         gasUrl,

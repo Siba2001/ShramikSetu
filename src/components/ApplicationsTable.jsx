@@ -298,19 +298,6 @@ export default function ApplicationsTable({
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Export Selected</span>
               </button>
-
-              <button
-                onClick={() => {
-                  if (window.confirm(`Mark ${selectedIds.size} applications as COMPLETED?`)) {
-                    onBulkComplete(Array.from(selectedIds));
-                    setSelectedIds(new Set());
-                  }
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg transition-colors shadow-xs"
-              >
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Mark Completed</span>
-              </button>
             </div>
           </div>
         )}
@@ -519,19 +506,6 @@ export default function ApplicationsTable({
                           title="Edit Application"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-
-                        {/* Complete Quick Button */}
-                        <button
-                          onClick={() => {
-                            if (window.confirm(`Mark ${app.applicantName} as COMPLETED?`)) {
-                              onUpdateStatus(app.id, 'Completed');
-                            }
-                          }}
-                          className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                          title="Mark Completed"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
                         </button>
 
                         {/* Delete */}

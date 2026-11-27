@@ -231,16 +231,6 @@ export default function ViewDetailsModal() {
               >
                 Approve
               </button>
-              <button
-                onClick={() => {
-                  if (window.confirm('Mark this application as Completed?')) {
-                    handleStatusChange('Completed');
-                  }
-                }}
-                className="px-3 py-1 bg-[#1E3A8A] hover:bg-[#172554] active:bg-blue-900 text-white rounded-lg text-xs font-bold shadow-xs cursor-pointer"
-              >
-                Mark Completed
-              </button>
             </div>
           </div>
 
