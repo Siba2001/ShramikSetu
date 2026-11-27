@@ -1,18 +1,18 @@
 import React, { useMemo, useState } from 'react';
-import {
-  FileText,
-  Clock,
-  Layers,
-  HelpCircle,
-  CheckCircle2,
-  AlertTriangle,
-  ArrowUpRight,
-  TrendingUp,
-  Building2,
-  MapPin,
-  Calendar,
-  Phone,
-  PlusCircle,
+import { 
+  FileText, 
+  Clock, 
+  Layers, 
+  HelpCircle, 
+  CheckCircle2, 
+  AlertTriangle, 
+  ArrowUpRight, 
+  TrendingUp, 
+  Building2, 
+  MapPin, 
+  Calendar, 
+  Phone, 
+  PlusCircle, 
   FileDown,
   Eye,
   CreditCard,
@@ -21,41 +21,20 @@ import {
   Cross,
   GraduationCap,
   Activity,
+  ShieldCheck,
   Check,
   Users,
-  ShieldCheck,
   RotateCw
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { Link } from 'react-router-dom';
 
-function cleanTrendDate(raw) {
-  if (!raw || typeof raw !== 'string') return null;
-  const trimmed = raw.trim();
-  // Match ISO / YYYY-MM-DD
-  const isoMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (isoMatch) {
-    return `${isoMatch[2]}-${isoMatch[3]}`; // MM-DD
-  }
-  // Match DD-MM-YYYY or DD/MM/YYYY
-  const dmyMatch = trimmed.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
-  if (dmyMatch) {
-    return `${dmyMatch[2]}-${dmyMatch[1]}`;
-  }
-  // Try parsing as Date
-  const parsed = new Date(trimmed);
-  if (!isNaN(parsed.getTime()) && parsed.getFullYear() > 2000 && parsed.getFullYear() < 2100) {
-    const m = String(parsed.getMonth() + 1).padStart(2, '0');
-    const d = String(parsed.getDate()).padStart(2, '0');
-    return `${m}-${d}`;
-  }
-  return null;
-}
-
 export default function DashboardPage() {
   const { 
     applications, 
     stats, 
+    isSummaryLoading,
+    refreshDashboardSummary,
     handleOpenAddModal, 
     handleOpenExportModal, 
     handleOpenViewModal 
@@ -63,22 +42,21 @@ export default function DashboardPage() {
 
   const [trendView, setTrendView] = useState('Daily Trend');
 
-  // Safe Stats Navigation (prevents any undefined / null crashes)
-  const safeStats = stats || {};
-  const categoryCounts = safeStats.categoryCounts || {};
-  const renewalsCount = categoryCounts['Card Renewal'] || categoryCounts['Annual Contribution'] || 0;
-  const newCardsCount = categoryCounts['New Card'] || 0;
-  const marriageCount = categoryCounts['Marriage Benefit Apply'] || 0;
-  const maternityCount = categoryCounts['Maternity Benefit Apply'] || 0;
-  const deathCount = categoryCounts['Death Benefit Apply'] || 0;
-  const educationCount = categoryCounts['Education Assistance Apply'] || 0;
+  // Renewal count combined
+  const renewalsCount = (stats.categoryCounts['Card Renewal'] || 0) + (stats.categoryCounts['Annual Contribution'] || 0);
+  const newCardsCount = stats.categoryCounts['New Card'] || 0;
+  const marriageCount = stats.categoryCounts['Marriage Benefit Apply'] || 0;
+  const maternityCount = stats.categoryCounts['Maternity Benefit Apply'] || 0;
+  const deathCount = stats.categoryCounts['Death Benefit Apply'] || 0;
+  const educationCount = stats.categoryCounts['Education Assistance Apply'] || 0;
   const welfareClaimsCount = marriageCount + maternityCount + deathCount + educationCount;
 
   // Today's applications (Prioritizes server summary)
   const todayDateStr = new Date().toISOString().slice(0, 10);
   const todayCount = useMemo(() => {
+    if (stats.todayCount !== undefined && stats.todayCount > 0) return stats.todayCount;
     return applications.filter(a => (a.createdAt || a.applicationDate || '').slice(0, 10) === todayDateStr).length;
-  }, [applications, todayDateStr]);
+  }, [stats.todayCount, applications, todayDateStr]);
 
   // Category statistics with routes & colors for ShramikSetu
   const categories = useMemo(() => [
@@ -92,7 +70,7 @@ export default function DashboardPage() {
 
   // Scheme share breakdown for donut chart (100% Dynamic - 0 when empty)
   const schemeDonutData = useMemo(() => {
-    const total = applications.length;
+    const total = stats.totalActive || applications.length;
 
     const items = [
       { label: 'New Card', count: newCardsCount, color: '#1E3A8A' },
@@ -111,34 +89,24 @@ export default function DashboardPage() {
       ...i,
       percent: Math.round((i.count / total) * 100)
     }));
-  }, [applications.length, newCardsCount, renewalsCount, welfareClaimsCount]);
+  }, [stats.totalActive, applications.length, newCardsCount, renewalsCount, welfareClaimsCount]);
 
-  // Daily Trend Data (100% Dynamic - strictly empty when no applications)
+  // Daily Trend Data (Prioritizes server-side pre-aggregated daily data)
   const trendData = useMemo(() => {
+    if (stats.recentDaysMap && Object.keys(stats.recentDaysMap).length > 0) {
+      const entries = Object.entries(stats.recentDaysMap).sort((a, b) => a[0].localeCompare(b[0]));
+      return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
+    }
+
     if (applications.length === 0) {
       return [];
     }
 
-    if (safeStats.recentDaysMap && Object.keys(safeStats.recentDaysMap).length > 0) {
-      const entries = Object.entries(safeStats.recentDaysMap)
-        .map(([date, cnt]) => {
-          const label = cleanTrendDate(date);
-          return label ? { rawDate: date, label, count: cnt } : null;
-        })
-        .filter(Boolean)
-        .sort((a, b) => a.rawDate.localeCompare(b.rawDate));
-
-      if (entries.length > 0) {
-        return entries.slice(-10).map(e => ({ date: e.label, count: e.count }));
-      }
-    }
-
     const map = {};
     applications.forEach(a => {
-      const raw = a?.applicationDate || a?.createdAt || '';
-      const label = cleanTrendDate(raw);
-      if (label) {
-        map[label] = (map[label] || 0) + 1;
+      const d = (a.applicationDate || a.createdAt || '').slice(0, 10);
+      if (d) {
+        map[d] = (map[d] || 0) + 1;
       }
     });
 
@@ -147,7 +115,7 @@ export default function DashboardPage() {
       return [{ date: todayDateStr.slice(5), count: applications.length }];
     }
     return entries.slice(-10).map(([date, cnt]) => ({ date: date.slice(5), count: cnt }));
-  }, [applications, safeStats.recentDaysMap, todayDateStr]);
+  }, [stats.recentDaysMap, applications, todayDateStr]);
 
   const maxTrendCount = useMemo(() => {
     if (trendData.length === 0) return 10;
@@ -156,20 +124,21 @@ export default function DashboardPage() {
 
   // Top blocks
   const topBlocks = useMemo(() => {
-    return Object.entries(safeStats.blockCounts || {})
+    return Object.entries(stats.blockCounts || {})
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6);
-  }, [safeStats.blockCounts]);
+  }, [stats.blockCounts]);
 
   // Recent applications
   const recentApplications = useMemo(() => {
-    return [...(applications || [])].slice(0, 6);
+    return [...applications].slice(0, 6);
   }, [applications]);
 
   // SVG Donut calculation (circumference for r=36 is 2 * PI * 36 ≈ 226)
   const circumference = 226;
   const strokeSegments = useMemo(() => {
-    if (applications.length === 0) {
+    const total = stats.totalActive || applications.length;
+    if (total === 0) {
       return [];
     }
     let accumulatedPercent = 0;
@@ -185,36 +154,11 @@ export default function DashboardPage() {
           dashOffset: offset
         };
       });
-  }, [schemeDonutData, applications.length]);
+  }, [schemeDonutData, stats.totalActive, applications.length]);
 
   return (
     <div className="space-y-5 animate-fadeIn">
       
-      {/* Official Government Portal Banner */}
-      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex items-center space-x-4">
-          <img
-            src="/logo.png"
-            alt="ShramikSetu"
-            className="h-12 sm:h-14 w-auto object-contain shrink-0"
-          />
-          <div className="border-l border-slate-200 pl-4 hidden sm:block">
-            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-              Odisha Building & Other Construction Workers' Welfare Board
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Integrated Beneficiary Registration, Card Renewal & Welfare Assistance Field Operations System
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200 shadow-2xs">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            Official Portal • Active Session
-          </span>
-        </div>
-      </div>
 
       {/* ======================================================== */}
       {/* 8 KPI STAT CARDS (2 ROWS OF 4 CARDS) - SHRAMIKSETU DATA   */}
@@ -222,7 +166,7 @@ export default function DashboardPage() {
 
       {/* ROW 1: 4 Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
+        
         {/* 1. TOTAL BENEFICIARIES */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
           <div className="flex items-center justify-between">
@@ -235,13 +179,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-600">
-              {safeStats.totalActive || 0}
+              {stats.totalActive}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {safeStats.totalActive || 0}
+              {stats.totalActive}
             </div>
           </div>
 
@@ -331,13 +275,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-600">
-              {safeStats.approved || 0}
+              {stats.approved}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {safeStats.approved || 0}
+              {stats.approved}
             </div>
           </div>
 
@@ -355,7 +299,7 @@ export default function DashboardPage() {
 
       {/* ROW 2: 4 Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-
+        
         {/* 5. PENDING / E-SIGN */}
         <div className="bg-white rounded-2xl p-4 border border-slate-200/70 shadow-xs relative overflow-hidden flex flex-col justify-between hover:border-slate-300 transition-all">
           <div className="flex items-center justify-between">
@@ -368,13 +312,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-600">
-              {safeStats.pending || 0}
+              {stats.pending}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {safeStats.pending || 0}
+              {stats.pending}
             </div>
           </div>
 
@@ -400,13 +344,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-fuchsia-50 text-fuchsia-600">
-              {safeStats.inProgress || 0}
+              {stats.inProgress}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {safeStats.inProgress || 0}
+              {stats.inProgress}
             </div>
           </div>
 
@@ -432,13 +376,13 @@ export default function DashboardPage() {
               </span>
             </div>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-600">
-              {safeStats.queries || 0}
+              {stats.queries}
             </span>
           </div>
 
           <div className="my-2.5">
             <div className="text-3xl font-black text-slate-900 tracking-tight font-mono">
-              {safeStats.queries || 0}
+              {stats.queries}
             </div>
           </div>
 
@@ -490,7 +434,7 @@ export default function DashboardPage() {
       {/* CHARTS ROW: BAR CHART (LEFT) + DONUT CHART (RIGHT)       */}
       {/* ======================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
+        
         {/* Left Card: Application Intake Trends (~65% width) */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/70 p-5 shadow-xs flex flex-col justify-between">
           <div className="flex items-start justify-between mb-4">
@@ -503,7 +447,7 @@ export default function DashboardPage() {
               </p>
             </div>
 
-            <button
+            <button 
               onClick={() => setTrendView(v => v === 'Daily Trend' ? 'All Time' : 'Daily Trend')}
               className="px-3 py-1 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold border border-slate-200 transition-colors shadow-2xs cursor-pointer"
             >
@@ -522,10 +466,10 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="h-56 w-full flex flex-col justify-end">
-
+              
               {/* Grid & Bars Container */}
               <div className="relative flex-1 flex items-end justify-between gap-2 sm:gap-4 border-b border-slate-200 pb-1">
-
+                
                 {/* Horizontal Grid lines */}
                 <div className="absolute inset-0 flex flex-col justify-between pointer-events-none text-[10px] text-slate-300">
                   <div className="border-b border-dashed border-slate-100 w-full flex items-center justify-between pr-2">
@@ -547,8 +491,8 @@ export default function DashboardPage() {
 
                 {/* Bars */}
                 {trendData.map((item, idx) => {
-                  const heightPercent = maxTrendCount > 0
-                    ? Math.max(8, Math.min(100, Math.round((item.count / maxTrendCount) * 100)))
+                  const heightPercent = maxTrendCount > 0 
+                    ? Math.max(8, Math.min(100, Math.round((item.count / maxTrendCount) * 100))) 
                     : 0;
 
                   return (
@@ -559,7 +503,7 @@ export default function DashboardPage() {
                       </div>
 
                       {/* Bar */}
-                      <div
+                      <div 
                         className="w-full max-w-[18px] sm:max-w-[22px] bg-[#1E3A8A] hover:bg-[#172554] rounded-t-sm transition-all duration-300"
                         style={{ height: `${heightPercent}%` }}
                       />
@@ -604,7 +548,7 @@ export default function DashboardPage() {
                 stroke="#F1F5F9"
                 strokeWidth="14"
               />
-
+              
               {/* Dynamic Segments (only when data > 0) */}
               {strokeSegments.map((seg, idx) => (
                 <circle
@@ -623,7 +567,7 @@ export default function DashboardPage() {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
               <span className="text-[11px] font-bold text-slate-400">Total</span>
-              <span className="text-xl font-black text-slate-900 font-mono">{safeStats.totalActive || (applications || []).length}</span>
+              <span className="text-xl font-black text-slate-900 font-mono">{applications.length}</span>
             </div>
           </div>
 
@@ -645,7 +589,7 @@ export default function DashboardPage() {
       {/* RECENT APPLICATIONS & BLOCK SUMMARY                      */}
       {/* ======================================================== */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-
+        
         {/* Recent Applications Feed (2 Cols) */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/70 p-5 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
@@ -731,8 +675,8 @@ export default function DashboardPage() {
               </div>
             ) : (
               topBlocks.map(([blockName, count]) => {
-                const percent = (safeStats.totalActive || 0) > 0
-                  ? Math.round((count / safeStats.totalActive) * 100)
+                const percent = stats.totalActive > 0 
+                  ? Math.round((count / stats.totalActive) * 100) 
                   : 0;
 
                 return (
@@ -745,8 +689,8 @@ export default function DashboardPage() {
                       <span className="font-bold text-slate-900">{count}</span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-[#1E3A8A] h-1.5 rounded-full transition-all duration-500"
+                      <div 
+                        className="bg-[#1E3A8A] h-1.5 rounded-full transition-all duration-500" 
                         style={{ width: `${percent}%` }}
                       />
                     </div>

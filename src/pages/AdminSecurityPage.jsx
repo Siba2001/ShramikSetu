@@ -1,49 +1,39 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import {
-  Shield,
-  ShieldCheck,
-  Lock,
-  KeyRound,
-  UserPlus,
-  Users,
-  Eye,
-  EyeOff,
-  ArrowLeft,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
-  Trash2,
-  User,
-  Mail,
+import { 
+  Shield, 
+  ShieldCheck, 
+  Lock, 
+  KeyRound, 
+  UserPlus, 
+  Users, 
+  Eye, 
+  EyeOff, 
+  ArrowLeft, 
+  RefreshCw, 
+  CheckCircle2, 
+  AlertCircle, 
+  Trash2, 
+  User, 
+  Mail, 
   Building2,
   ExternalLink,
   History,
-  Download,
-  AlertTriangle,
-  Info,
-  X
+  Download
 } from 'lucide-react';
-import {
-  getSystemAccounts,
-  verifyMasterKey,
-  updateUserPassword,
-  createSystemAccount,
+import { 
+  getSystemAccounts, 
+  verifyMasterKey, 
+  updateUserPassword, 
+  createSystemAccount, 
   deleteSystemAccount,
   getAuditLogs,
-  clearAuditLogs
+  clearAuditLogs,
+  DEFAULT_MASTER_TOKEN 
 } from '../services/auth';
 
 export default function AdminSecurityPage() {
   const navigate = useNavigate();
-  const { handleLogout } = useApp();
-
-  // Explicit, safe return to login that revokes active sessions so credentials are always required
-  const handleGoToLogin = () => {
-    handleLogout(true);
-    navigate('/login', { replace: true });
-  };
 
   // Gate state
   const [isUnlocked, setIsUnlocked] = useState(false);
@@ -51,8 +41,6 @@ export default function AdminSecurityPage() {
   const [showMasterKey, setShowMasterKey] = useState(false);
   const [gateError, setGateError] = useState('');
   const [gateLoading, setGateLoading] = useState(false);
-  const [gateSuccess, setGateSuccess] = useState(false);
-  const [gateShaking, setGateShaking] = useState(false);
 
   // Ensure dark background and eliminate white flash on refresh
   useEffect(() => {
@@ -115,52 +103,38 @@ export default function AdminSecurityPage() {
   };
 
   // 1. Handle Gate Authentication
-  const handleGateSubmit = async (e) => {
+  const handleGateSubmit = (e) => {
     e.preventDefault();
     setGateError('');
 
     if (!masterKey.trim()) {
-      setGateShaking(true);
-      setTimeout(() => setGateShaking(false), 500);
       setGateError('Please enter the Master Security Token or Admin Password.');
       return;
     }
 
     setGateLoading(true);
-    try {
-      const ok = await verifyMasterKey(masterKey);
+    setTimeout(() => {
+      const ok = verifyMasterKey(masterKey);
+      setGateLoading(false);
 
       if (ok) {
-        setGateLoading(false);
-        setGateSuccess(true);
-        // Smooth 400ms transition before opening portal
-        setTimeout(() => {
-          setIsUnlocked(true);
-        }, 400);
+        setIsUnlocked(true);
       } else {
-        setGateLoading(false);
-        setGateShaking(true);
-        setTimeout(() => setGateShaking(false), 500);
         setGateError('Invalid Master Token or Admin Password. Access Denied.');
       }
-    } catch (err) {
-      setGateLoading(false);
-      setGateShaking(true);
-      setTimeout(() => setGateShaking(false), 500);
-      setGateError('Authentication failed. Please verify your token.');
-    }
+    }, 350);
   };
 
   // 2. Handle Reset Password Submit
-  const handleResetSubmit = async (e) => {
+  const handleResetSubmit = (e) => {
     e.preventDefault();
 
     if (!resetTargetUser) {
       showNotify('error', 'Please select a target user account.');
       return;
     }
-    if (!newPassword || newPassword.length < 8) {
-      showNotify('error', 'New password must be at least 8 characters long.');
+    if (!newPassword || newPassword.length < 4) {
+      showNotify('error', 'New password must be at least 4 characters long.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -168,35 +142,32 @@ export default function AdminSecurityPage() {
       return;
     }
 
-    try {
-      setResetLoading(true);
-      const res = await updateUserPassword(resetTargetUser, newPassword);
+    setResetLoading(true);
+    setTimeout(() => {
+      const res = updateUserPassword(resetTargetUser, newPassword);
       setResetLoading(false);
 
-      if (res && res.success) {
+      if (res.success) {
         showNotify('success', `Password for user "${resetTargetUser}" has been successfully updated.`);
         setNewPassword('');
         setConfirmPassword('');
         refreshAccounts();
       } else {
-        showNotify('error', res?.error || 'Failed to update password.');
+        showNotify('error', res.error || 'Failed to update password.');
       }
-    } catch (err) {
-      setResetLoading(false);
-      showNotify('error', `Failed to update password: ${err.message}`);
-    }
+    }, 300);
   };
 
   // 3. Handle Create Account Submit
-  const handleCreateSubmit = async (e) => {
+  const handleCreateSubmit = (e) => {
     e.preventDefault();
 
     if (!newUser.username.trim() || !newUser.fullName.trim()) {
       showNotify('error', 'User ID and Full Name are required.');
       return;
     }
-    if (!newUser.password || newUser.password.length < 6) {
-      showNotify('error', 'Password must be at least 6 characters long.');
+    if (!newUser.password || newUser.password.length < 4) {
+      showNotify('error', 'Password must be at least 4 characters long.');
       return;
     }
     if (newUser.password !== newUser.confirmPassword) {
@@ -204,9 +175,9 @@ export default function AdminSecurityPage() {
       return;
     }
 
-    try {
-      setCreateLoading(true);
-      const res = await createSystemAccount({
+    setCreateLoading(true);
+    setTimeout(() => {
+      const res = createSystemAccount({
         username: newUser.username,
         fullName: newUser.fullName,
         role: newUser.role,
@@ -215,7 +186,7 @@ export default function AdminSecurityPage() {
       });
       setCreateLoading(false);
 
-      if (res && res.success) {
+      if (res.success) {
         showNotify('success', `New account @${newUser.username} provisioned successfully!`);
         setNewUser({
           username: '',
@@ -228,12 +199,9 @@ export default function AdminSecurityPage() {
         refreshAccounts();
         setActiveTab('accounts');
       } else {
-        showNotify('error', res?.error || 'Failed to create user account.');
+        showNotify('error', res.error || 'Failed to create user account.');
       }
-    } catch (err) {
-      setCreateLoading(false);
-      showNotify('error', `Failed to create user account: ${err.message}`);
-    }
+    }, 300);
   };
 
   // 4. Handle Delete Account
@@ -255,10 +223,10 @@ export default function AdminSecurityPage() {
   if (!isUnlocked) {
     return (
       <div className="min-h-screen bg-[#070d1e] text-slate-100 flex flex-col justify-center items-center px-4 py-12 relative overflow-hidden font-sans select-none">
-
+        
         {/* Subtle grid pattern background */}
-        <div
-          className="absolute inset-0 opacity-15 pointer-events-none"
+        <div 
+          className="absolute inset-0 opacity-15 pointer-events-none" 
           style={{
             backgroundImage: 'radial-gradient(#38bdf8 1px, transparent 1px)',
             backgroundSize: '28px 28px'
@@ -269,12 +237,11 @@ export default function AdminSecurityPage() {
         <div className="absolute top-1/4 -left-32 w-80 h-80 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute bottom-1/4 -right-32 w-80 h-80 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
 
-        <div className={`w-full max-w-md relative z-10 transition-all duration-300 ${gateShaking ? 'animate-shake-soft' : ''
-          } ${gateSuccess ? 'scale-[1.01]' : ''}`}>
-
+        <div className="w-full max-w-md relative z-10">
+          
           {/* Main Card matching Divy-Impex image */}
           <div className="bg-[#0e1a38] rounded-3xl border border-slate-700/60 shadow-2xl overflow-hidden backdrop-blur-xl">
-
+            
             {/* Top Shield Header */}
             <div className="pt-8 pb-5 px-6 text-center border-b border-slate-800/80">
               <div className="w-16 h-16 rounded-full bg-slate-900/90 border border-slate-700 mx-auto flex items-center justify-center text-slate-300 shadow-inner mb-4">
@@ -290,7 +257,7 @@ export default function AdminSecurityPage() {
 
             {/* Inner Form Area */}
             <div className="p-6 sm:p-7 bg-white text-slate-800 space-y-5">
-
+              
               {/* Yellow Alert Banner */}
               <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-300/80 text-amber-900 text-xs flex items-center gap-2.5 shadow-2xs">
                 <KeyRound className="w-4 h-4 text-amber-600 shrink-0" />
@@ -338,49 +305,39 @@ export default function AdminSecurityPage() {
                     </button>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-1 flex justify-between">
-                    <span></span>
+                    <span>Default Master Token: <code className="font-mono text-slate-600 font-bold">SHRAMIK-SECURE-2026</code></span>
+                    <span>or Admin PW</span>
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={gateLoading || gateSuccess}
-                  className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white transition-all duration-300 shadow-md cursor-pointer active:scale-[0.98] ${gateSuccess
-                    ? 'bg-emerald-600 hover:bg-emerald-600 shadow-emerald-500/30 animate-success-pop'
-                    : gateLoading
-                      ? 'bg-[#16274e] animate-glow-pulse shadow-blue-900/40'
-                      : 'bg-[#0e1a38] hover:bg-[#16274e] active:bg-[#091227] hover:shadow-lg hover:-translate-y-0.5'
-                    }`}
+                  disabled={gateLoading}
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl text-xs font-bold text-white bg-[#0e1a38] hover:bg-[#16274e] active:bg-[#091227] disabled:opacity-60 transition-all shadow-md cursor-pointer"
                 >
-                  {gateSuccess ? (
-                    <div className="flex items-center gap-2 animate-fade-scale">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-300 animate-bounce" />
-                      <span>Access Authorized! Opening...</span>
-                    </div>
-                  ) : gateLoading ? (
-                    <div className="flex items-center gap-2">
+                  {gateLoading ? (
+                    <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Authenticating...</span>
-                    </div>
+                      <span>Verifying Master Token...</span>
+                    </>
                   ) : (
-                    <div className="flex items-center gap-2">
+                    <>
                       <ShieldCheck className="w-4 h-4 text-amber-400" />
                       <span>Authenticate & Access Admin Portal</span>
-                    </div>
+                    </>
                   )}
                 </button>
               </form>
 
               {/* Back to Login Link */}
               <div className="pt-2 text-center">
-                <button
-                  type="button"
-                  onClick={handleGoToLogin}
-                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                <Link
+                  to="/login"
+                  className="inline-flex items-center justify-center gap-1.5 w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Return to Login</span>
-                </button>
+                </Link>
               </div>
 
             </div>
@@ -402,7 +359,7 @@ export default function AdminSecurityPage() {
   // ==========================================
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans pb-16">
-
+      
       {/* Top Black / Dark Navy Header Bar */}
       <header className="bg-[#0b1329] border-b border-slate-800 text-white sticky top-0 z-30 shadow-md">
         <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
@@ -426,15 +383,13 @@ export default function AdminSecurityPage() {
           </div>
 
           <div className="flex items-center space-x-2">
-            <button
-              type="button"
-              onClick={handleGoToLogin}
-              className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-              title="Return to Login Screen"
+            <Link
+              to="/login"
+              className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors inline-flex items-center gap-1.5"
             >
               <span>Login Screen</span>
               <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-            </button>
+            </Link>
             <button
               onClick={() => {
                 setIsUnlocked(false);
@@ -452,45 +407,33 @@ export default function AdminSecurityPage() {
 
       {/* Main Container */}
       <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-6">
-
-        {/* Top Middle Floating Notification for All Message Types */}
+        
+        {/* Floating Notification */}
         {notification && (
-          <div className="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none animate-fade-scale max-w-lg w-auto px-4">
-            <div className={`pointer-events-auto flex items-center gap-3 px-5 py-3 rounded-2xl shadow-2xl border text-xs font-semibold backdrop-blur-md transition-all ${notification.type === 'success'
-              ? 'bg-emerald-600 text-white border-emerald-400/80 shadow-emerald-950/25'
+          <div className={`mb-6 p-4 rounded-2xl border text-xs font-semibold flex items-center gap-2.5 shadow-md animate-fade-in ${
+            notification.type === 'success'
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
               : notification.type === 'error'
-                ? 'bg-rose-600 text-white border-rose-400/80 shadow-rose-950/25'
-                : notification.type === 'warning'
-                  ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-950/20'
-                  : 'bg-[#0b1329] text-white border-slate-700 shadow-slate-950/40'
-              }`}>
-              {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-100 shrink-0" />}
-              {notification.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-100 shrink-0" />}
-              {notification.type === 'warning' && <AlertTriangle className="w-4 h-4 text-slate-950 shrink-0" />}
-              {(notification.type === 'info' || !notification.type) && <Info className="w-4 h-4 text-sky-400 shrink-0" />}
-              <span className="leading-snug">{notification.message}</span>
-              <button
-                type="button"
-                onClick={() => setNotification(null)}
-                className="ml-2 p-0.5 rounded-lg opacity-70 hover:opacity-100 transition-opacity cursor-pointer shrink-0"
-                title="Dismiss"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
+              ? 'bg-rose-50 border-rose-300 text-rose-800'
+              : 'bg-blue-50 border-blue-300 text-blue-800'
+          }`}>
+            {notification.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+            {notification.type === 'error' && <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />}
+            <span>{notification.message}</span>
           </div>
         )}
 
         {/* Top Tab Bar matching Divy-Impex layout */}
         <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs mb-6 flex flex-wrap gap-1.5">
-
+          
           {/* Tab 1: Change / Reset Password */}
           <button
             onClick={() => setActiveTab('reset')}
-            className={`flex-1 min-w-[200px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'reset'
-              ? 'bg-[#0e1a38] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+            className={`flex-1 min-w-[200px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'reset'
+                ? 'bg-[#0e1a38] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
           >
             <KeyRound className="w-4 h-4" />
             <span>1. Change / Reset Password</span>
@@ -499,10 +442,11 @@ export default function AdminSecurityPage() {
           {/* Tab 2: Create New User ID & Password */}
           <button
             onClick={() => setActiveTab('create')}
-            className={`flex-1 min-w-[200px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'create'
-              ? 'bg-[#0e1a38] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+            className={`flex-1 min-w-[200px] py-2.5 px-4 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'create'
+                ? 'bg-[#0e1a38] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
           >
             <UserPlus className="w-4 h-4" />
             <span>2. Create New User ID & Password</span>
@@ -511,10 +455,11 @@ export default function AdminSecurityPage() {
           {/* Tab 3: All System Accounts */}
           <button
             onClick={() => setActiveTab('accounts')}
-            className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'accounts'
-              ? 'bg-[#0e1a38] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+            className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'accounts'
+                ? 'bg-[#0e1a38] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
           >
             <Users className="w-4 h-4" />
             <span>3. All System Accounts ({accounts.length})</span>
@@ -523,10 +468,11 @@ export default function AdminSecurityPage() {
           {/* Tab 4: Security Audit & Session Logs */}
           <button
             onClick={() => setActiveTab('logs')}
-            className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${activeTab === 'logs'
-              ? 'bg-[#0e1a38] text-white shadow-sm'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-              }`}
+            className={`flex-1 min-w-[170px] py-2.5 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              activeTab === 'logs'
+                ? 'bg-[#0e1a38] text-white shadow-sm'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+            }`}
           >
             <History className="w-4 h-4" />
             <span>4. Security Audit Trail ({securityLogs.length})</span>
@@ -539,9 +485,9 @@ export default function AdminSecurityPage() {
         {/* ======================================================== */}
         {activeTab === 'reset' && (
           <div className="space-y-4">
-
+            
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 relative overflow-hidden border-l-4 border-l-[#f5b324]">
-
+              
               <div className="flex items-start justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900">
@@ -557,7 +503,7 @@ export default function AdminSecurityPage() {
               </div>
 
               <form onSubmit={handleResetSubmit} className="mt-6 space-y-5">
-
+                
                 {/* Select Target User Account */}
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -583,7 +529,7 @@ export default function AdminSecurityPage() {
 
                 {/* Password Fields Row */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
+                  
                   {/* New Password */}
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -649,7 +595,7 @@ export default function AdminSecurityPage() {
                   <button
                     type="submit"
                     disabled={resetLoading}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#0e1a38] hover:bg-[#192b57] active:bg-[#070e1e] active:scale-[0.98] transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 cursor-pointer disabled:opacity-60"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#0e1a38] hover:bg-[#192b57] active:bg-[#070e1e] transition-all shadow-md cursor-pointer disabled:opacity-60"
                   >
                     {resetLoading ? (
                       <RefreshCw className="w-4 h-4 animate-spin text-amber-400" />
@@ -668,15 +614,7 @@ export default function AdminSecurityPage() {
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-slate-600 text-xs flex items-center gap-2.5">
               <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>
-                <strong className="font-bold text-slate-800">Instant Activation:</strong> Once updated, the user can immediately log in on the{' '}
-                <button
-                  type="button"
-                  onClick={handleGoToLogin}
-                  className="text-blue-600 font-bold underline hover:text-blue-800 cursor-pointer"
-                >
-                  Login Screen
-                </button>{' '}
-                with the new password.
+                <strong className="font-bold text-slate-800">Instant Activation:</strong> Once updated, the user can immediately log in on the <Link to="/login" className="text-blue-600 font-bold underline hover:text-blue-800">Login Screen</Link> with the new password.
               </span>
             </div>
 
@@ -688,9 +626,9 @@ export default function AdminSecurityPage() {
         {/* ======================================================== */}
         {activeTab === 'create' && (
           <div className="space-y-4">
-
+            
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 relative overflow-hidden border-l-4 border-l-[#0e1a38]">
-
+              
               <div className="flex items-start justify-between pb-4 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-extrabold text-slate-900">
@@ -706,7 +644,7 @@ export default function AdminSecurityPage() {
               </div>
 
               <form onSubmit={handleCreateSubmit} className="mt-6 space-y-4">
-
+                
                 {/* Row 1: Username & Full Name */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -848,7 +786,7 @@ export default function AdminSecurityPage() {
                   <button
                     type="submit"
                     disabled={createLoading}
-                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#0e1a38] hover:bg-[#192b57] active:bg-[#070e1e] active:scale-[0.98] transition-all duration-200 shadow-md hover:shadow-lg hover:-translate-y-0.5 cursor-pointer disabled:opacity-60"
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#0e1a38] hover:bg-[#192b57] active:bg-[#070e1e] transition-all shadow-md cursor-pointer disabled:opacity-60"
                   >
                     <UserPlus className="w-4 h-4 text-emerald-400" />
                     <span>Create Account</span>
@@ -867,7 +805,7 @@ export default function AdminSecurityPage() {
         {/* ======================================================== */}
         {activeTab === 'accounts' && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
+            
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <h2 className="text-base font-extrabold text-slate-900">
@@ -969,7 +907,7 @@ export default function AdminSecurityPage() {
         {/* ======================================================== */}
         {activeTab === 'logs' && (
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-
+            
             <div className="p-6 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-extrabold text-slate-900">
@@ -1047,14 +985,15 @@ export default function AdminSecurityPage() {
                             {log.details}
                           </td>
                           <td className="py-3 px-4 text-right">
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${log.level === 'success'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : log.level === 'security'
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              log.level === 'success'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : log.level === 'security'
                                 ? 'bg-purple-50 text-purple-700 border border-purple-200'
                                 : log.level === 'warning'
-                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
-                              }`}>
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-slate-100 text-slate-700 border border-slate-200'
+                            }`}>
                               {(log.level || 'INFO').toUpperCase()}
                             </span>
                           </td>

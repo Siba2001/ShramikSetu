@@ -19,14 +19,12 @@ import {
   batchImportApplications as dbBatchImportApplications,
   getGoogleScriptUrl,
   clearAllData as dbClearAllData,
-  clearPagedApplicationsCache,
   loadMarriageVerifications,
   saveMarriageVerifications,
   addMarriageVerification as dbAddMarriageVerification,
   updateMarriageVerification as dbUpdateMarriageVerification,
   deleteMarriageVerification as dbDeleteMarriageVerification,
-  fetchMarriageVerificationsFromBackend,
-  isDeletedTombstone
+  fetchMarriageVerificationsFromBackend
 } from '../services/db';
 import {
   getCurrentUser,
@@ -38,9 +36,7 @@ import {
   lockSessionTerminal,
   unlockSessionTerminal,
   isTerminalLocked as checkIsTerminalLocked,
-  updateSessionLastActive,
-  SESSION_TIMEOUT_MS,
-  isSessionExpired
+  updateSessionLastActive
 } from '../services/auth';
 import { syncQueue } from '../services/syncQueue';
 import { ALL_BLOCKS } from '../data/locationData';
@@ -60,14 +56,7 @@ export function AppProvider({ children }) {
   const [districts, setDistricts] = useState(() => loadDistricts());
   const [agents, setAgents] = useState(() => loadAgents());
   const [marriageVerifications, setMarriageVerifications] = useState(() => loadMarriageVerifications());
-  const [dashboardSummary, setDashboardSummary] = useState(() => {
-    try {
-      const cached = localStorage.getItem('shramik_setu_dashboard_summary_v1');
-      return cached ? JSON.parse(cached) : null;
-    } catch (e) {
-      return null;
-    }
-  });
+  const [dashboardSummary, setDashboardSummary] = useState(null);
   const [isSummaryLoading, setIsSummaryLoading] = useState(false);
   const [pendingSyncCount, setPendingSyncCount] = useState(() => syncQueue.getPendingCount());
 
@@ -78,7 +67,7 @@ export function AppProvider({ children }) {
   const [isAddEditOpen, setIsAddEditOpen] = useState(false);
   const [applicationToEdit, setApplicationToEdit] = useState(null);
   const [defaultServiceForAdd, setDefaultServiceForAdd] = useState('New Card');
-
+  
   const [isViewDetailsOpen, setIsViewDetailsOpen] = useState(false);
   const [applicationToView, setApplicationToView] = useState(null);
 
@@ -97,11 +86,7 @@ export function AppProvider({ children }) {
     setToast({ type, message });
     setTimeout(() => {
       setToast(null);
-    }, 4500);
-  }, []);
-
-  const clearToast = useCallback(() => {
-    setToast(null);
+    }, 4000);
   }, []);
 
   // Listen to background sync queue events
@@ -126,20 +111,17 @@ export function AppProvider({ children }) {
     return res;
   };
 
-  const handleLogout = useCallback((force = false) => {
+  const handleLogout = (force = false) => {
     if (!force) {
       setIsLogoutConfirmOpen(true);
       return;
     }
-    const hadUser = Boolean(getCurrentUser());
     logoutUser();
     setUser(null);
     setIsTerminalLocked(false);
     setIsLogoutConfirmOpen(false);
-    if (hadUser) {
-      showToast('info', 'You have been safely logged out.');
-    }
-  }, [showToast]);
+    showToast('info', 'You have been safely logged out.');
+  };
 
   const cancelLogout = () => {
     setIsLogoutConfirmOpen(false);
@@ -200,26 +182,13 @@ export function AppProvider({ children }) {
     };
     window.addEventListener('storage', handleStorageChange);
 
-    // Auto-logout on backend session expiration or revocation
-    const handleSessionExpired = () => {
-      handleLogout(true);
-    };
-    window.addEventListener('shramiksetu:session_expired', handleSessionExpired);
-
-    // Live Clock Interval for internal duration display & 1-hour session auto-clear
+    // Live Clock Interval for internal duration display
     const interval = setInterval(() => {
       if (!user?.loginAt) return;
 
       const now = Date.now();
       const loginTime = new Date(user.loginAt).getTime();
       const diffMs = Math.max(0, now - loginTime);
-
-      // Strict 1-hour session timeout rule (60 minutes = 3,600,000 ms)
-      if (diffMs >= SESSION_TIMEOUT_MS || isSessionExpired(user)) {
-        showToast('error', 'Your session has expired after 1 hour. Please sign in again.');
-        handleLogout(true);
-        return;
-      }
 
       const totalSec = Math.floor(diffMs / 1000);
       const mins = Math.floor(totalSec / 60);
@@ -233,16 +202,15 @@ export function AppProvider({ children }) {
       window.removeEventListener('click', handleUserActivity);
       window.removeEventListener('scroll', handleUserActivity);
       window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('shramiksetu:session_expired', handleSessionExpired);
       clearInterval(interval);
     };
   }, [isAuthenticated, user?.loginAt]);
 
   // High-Speed Dashboard Summary Fetcher (Zero full-database download)
-  const refreshDashboardSummary = useCallback(async (bypassCache = false) => {
+  const refreshDashboardSummary = useCallback(async () => {
     setIsSummaryLoading(true);
     try {
-      const summary = await fetchDashboardSummary(bypassCache);
+      const summary = await fetchDashboardSummary();
       if (summary && summary.success) {
         setDashboardSummary(summary);
       }
@@ -255,141 +223,89 @@ export function AppProvider({ children }) {
 
   // Refresh from storage & sync live data from Google Sheets database
   const refreshData = useCallback(() => {
-    // Step 1: Show local data INSTANTLY (zero network delay)
-    setApplications(loadApplications());
-    setDistricts(loadDistricts());
-    setAgents(loadAgents());
-    setMarriageVerifications(loadMarriageVerifications());
+    const apps = loadApplications();
+    const dists = loadDistricts();
+    const ags = loadAgents();
+    const mvs = loadMarriageVerifications();
+    setApplications(apps);
+    setDistricts(dists);
+    setAgents(ags);
+    setMarriageVerifications(mvs);
 
-    // Step 2: Fire ALL backend syncs in PARALLEL — do not await each other
-    Promise.allSettled([
-      fetchDashboardSummary(false).then(summary => {
-        if (summary && summary.success) setDashboardSummary(summary);
-      }),
-      fetchAgentsFromBackend().then(liveAgents => {
-        if (liveAgents && Array.isArray(liveAgents)) setAgents(liveAgents);
-      }),
-      fetchFromGoogleSheet().then(liveApps => {
-        if (liveApps && Array.isArray(liveApps) && liveApps.length > 0) setApplications(liveApps);
-      }),
-      fetchMarriageVerificationsFromBackend().then(liveMvs => {
-        if (liveMvs && Array.isArray(liveMvs)) setMarriageVerifications(liveMvs);
-      })
-    ]).catch(() => { });
-  }, []);
+    // Refresh lightweight pre-aggregated dashboard KPIs first
+    refreshDashboardSummary();
 
-  // Intelligent Polling: Runs all syncs in parallel every 60s when tab is visible
+    // Sync live agents directly from database
+    fetchAgentsFromBackend().then(liveAgents => {
+      if (liveAgents && Array.isArray(liveAgents)) {
+        setAgents(liveAgents);
+      }
+    }).catch(() => {});
+
+    // Sync marriage verifications directly from database
+    fetchMarriageVerificationsFromBackend().then(liveMvs => {
+      if (liveMvs && Array.isArray(liveMvs)) {
+        setMarriageVerifications(liveMvs);
+      }
+    }).catch(() => {});
+  }, [refreshDashboardSummary]);
+
+  // Intelligent Polling: Only poll lightweight dashboard summary and reference data
   useEffect(() => {
     refreshData();
 
+    // Background live sync interval (every 60s when visible)
     const liveSyncTimer = setInterval(() => {
       if (document.visibilityState === 'visible') {
-        Promise.allSettled([
-          fetchDashboardSummary(false).then(summary => {
-            if (summary && summary.success) setDashboardSummary(summary);
-          }),
-          fetchAgentsFromBackend().then(liveAgents => {
-            if (liveAgents && Array.isArray(liveAgents)) setAgents(liveAgents);
-          }),
-          fetchFromGoogleSheet().then(liveApps => {
-            if (liveApps && Array.isArray(liveApps) && liveApps.length > 0) setApplications(liveApps);
-          }),
-          fetchMarriageVerificationsFromBackend().then(liveMvs => {
-            if (liveMvs && Array.isArray(liveMvs)) setMarriageVerifications(liveMvs);
-          })
-        ]).catch(() => { });
+        refreshDashboardSummary();
+        fetchAgentsFromBackend().then(liveAgents => {
+          if (liveAgents && Array.isArray(liveAgents)) {
+            setAgents(liveAgents);
+          }
+        }).catch(() => {});
       }
     }, 60000);
 
     return () => clearInterval(liveSyncTimer);
-  }, [refreshData]);
+  }, [refreshData, refreshDashboardSummary]);
 
-  // Real-time synchronization across modules and tabs
-  useEffect(() => {
-    const handleCreated = (e) => {
-      const record = e.detail?.record;
-      if (!record) return;
-      setApplications(prev => {
-        const next = [record, ...prev.filter(a => a.id !== record.id)];
-        saveApplications(next);
-        return next;
-      });
-    };
-
-    const handleUpdated = (e) => {
-      const record = e.detail?.record;
-      if (!record || !record.id) return;
-      setApplications(prev => {
-        const next = prev.map(a => a.id === record.id ? { ...a, ...record } : a);
-        saveApplications(next);
-        return next;
-      });
-    };
-
-    const handleDeleted = (e) => {
-      const { id, trackNo } = e.detail || {};
-      setApplications(prev => {
-        const next = prev.filter(a => {
-          if (id && a.id === id) return false;
-          if (trackNo && a.trackNo === trackNo) return false;
-          return true;
-        });
-        saveApplications(next);
-        return next;
-      });
-    };
-
-    const handlePagedSync = (e) => {
-      const fetchedRecords = e.detail?.data?.data || e.detail?.records;
-      if (Array.isArray(fetchedRecords) && fetchedRecords.length > 0) {
-        setApplications(prev => {
-          let updated = [...prev];
-          let changed = false;
-          fetchedRecords.forEach(remoteApp => {
-            if (isDeletedTombstone(remoteApp)) return;
-            const idx = updated.findIndex(a => (remoteApp.id && a.id === remoteApp.id) || (remoteApp.trackNo && a.trackNo === remoteApp.trackNo));
-            if (idx !== -1) {
-              updated[idx] = { ...updated[idx], ...remoteApp };
-              changed = true;
-            } else {
-              updated.unshift(remoteApp);
-              changed = true;
-            }
-          });
-          if (changed) {
-            saveApplications(updated);
-            return updated;
-          }
-          return prev;
-        });
-      }
-    };
-
-    const handleStorageChange = (e) => {
-      if (e.key === 'shramik_setu_applications_v2') {
-        setApplications(loadApplications());
-      }
-    };
-
-    window.addEventListener('shramiksetu:application_created', handleCreated);
-    window.addEventListener('shramiksetu:application_updated', handleUpdated);
-    window.addEventListener('shramiksetu:application_deleted', handleDeleted);
-    window.addEventListener('shramiksetu:paged_sync', handlePagedSync);
-    window.addEventListener('storage', handleStorageChange);
-
-    return () => {
-      window.removeEventListener('shramiksetu:application_created', handleCreated);
-      window.removeEventListener('shramiksetu:application_updated', handleUpdated);
-      window.removeEventListener('shramiksetu:application_deleted', handleDeleted);
-      window.removeEventListener('shramiksetu:paged_sync', handlePagedSync);
-      window.removeEventListener('storage', handleStorageChange);
-    };
-  }, []);
-
-  // Computed Global Stats (Prioritizes server-side pre-aggregated summary; falls back to local memory with universal merge)
+  // Computed Global Stats (Prioritizes server-side pre-aggregated summary; falls back to local memory)
   const stats = useMemo(() => {
-    const localApps = Array.isArray(applications) && applications.length > 0 ? applications : loadApplications();
-    const localCounts = {
+    if (dashboardSummary && dashboardSummary.success) {
+      return {
+        totalActive: dashboardSummary.totalActive || 0,
+        pending: dashboardSummary.pending || 0,
+        inProgress: dashboardSummary.inProgress || 0,
+        queries: dashboardSummary.queries || 0,
+        approved: dashboardSummary.approved || 0,
+        bankRejections: dashboardSummary.bankRejections || 0,
+        completed: dashboardSummary.completed || 0,
+        categoryCounts: dashboardSummary.categoryCounts || {
+          'New Card': 0,
+          'Card Renewal': 0,
+          'Annual Contribution': 0,
+          'Marriage Benefit Apply': 0,
+          'Maternity Benefit Apply': 0,
+          'Death Benefit Apply': 0,
+          'Education Assistance Apply': 0
+        },
+        blockCounts: dashboardSummary.blockStats || {},
+        districtCounts: dashboardSummary.districtStats || {},
+        todayCount: dashboardSummary.todayCount || 0,
+        recentDaysMap: dashboardSummary.recentDaysMap || {}
+      };
+    }
+
+    // Fallback: in-memory computation
+    const totalActive = applications.length;
+    const pending = applications.filter(a => a.status === 'Pending' || a.status === 'E-Sign Pending').length;
+    const inProgress = applications.filter(a => a.status === 'In Progress' || a.status === 'Query Replied').length;
+    const queries = applications.filter(a => a.status === 'Query Raised').length;
+    const approved = applications.filter(a => a.status === 'Approved').length;
+    const bankRejections = applications.filter(a => a.status === 'Bank Reject' || a.status === 'Rejected').length;
+    const completed = applications.filter(a => a.status === 'Completed').length;
+
+    const categoryCounts = {
       'New Card': 0,
       'Card Renewal': 0,
       'Annual Contribution': 0,
@@ -398,158 +314,34 @@ export function AppProvider({ children }) {
       'Death Benefit Apply': 0,
       'Education Assistance Apply': 0
     };
-    let localPending = 0;
-    let localInProgress = 0;
-    let localQueries = 0;
-    let localApproved = 0;
-    let localBankRejections = 0;
-    let localCompleted = 0;
-    const localBlockCounts = {};
-    const localDistrictCounts = {};
-    const localRecentDaysMap = {};
-    const todayDateStr = new Date().toISOString().slice(0, 10);
-    let localTodayCount = 0;
 
-    localApps.forEach(a => {
-      if (!a) return;
-      const s = (a.serviceType || '').toLowerCase();
-      if (s.includes('renewal') || s.includes('contribution')) {
-        localCounts['Card Renewal']++;
-        localCounts['Annual Contribution']++;
-      } else if (s.includes('marriage')) {
-        localCounts['Marriage Benefit Apply']++;
-      } else if (s.includes('maternity')) {
-        localCounts['Maternity Benefit Apply']++;
-      } else if (s.includes('death')) {
-        localCounts['Death Benefit Apply']++;
-      } else if (s.includes('education')) {
-        localCounts['Education Assistance Apply']++;
-      } else {
-        localCounts['New Card']++;
-      }
+    const blockCounts = {};
+    const districtCounts = {};
 
-      const st = String(a.status || 'Pending').toLowerCase();
-      if (st === 'pending' || st === 'e-sign pending') localPending++;
-      else if (st === 'in progress' || st === 'query replied') localInProgress++;
-      else if (st === 'query raised') localQueries++;
-      else if (st === 'approved') localApproved++;
-      else if (st === 'bank reject' || st === 'bank rejection' || st === 'rejected') localBankRejections++;
-      else if (st === 'completed') localCompleted++;
+    applications.forEach(a => {
+      const s = a.serviceType || 'New Card';
+      categoryCounts[s] = (categoryCounts[s] || 0) + 1;
 
-      if (a.block) {
-        localBlockCounts[a.block] = (localBlockCounts[a.block] || 0) + 1;
-      }
-      if (a.district) {
-        localDistrictCounts[a.district] = (localDistrictCounts[a.district] || 0) + 1;
-      }
+      const b = a.block || 'General';
+      blockCounts[b] = (blockCounts[b] || 0) + 1;
 
-      const rawDate = String(a.createdAt || a.applicationDate || '').trim();
-      const dateStr = rawDate.slice(0, 10);
-      if (dateStr && /^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-        localRecentDaysMap[dateStr] = (localRecentDaysMap[dateStr] || 0) + 1;
-        if (dateStr === todayDateStr) {
-          localTodayCount++;
-        }
-      }
+      const d = a.district || 'Ganjam';
+      districtCounts[d] = (districtCounts[d] || 0) + 1;
     });
 
-    if (dashboardSummary && dashboardSummary.success) {
-      const rawCategoryCounts = dashboardSummary.categoryCounts || dashboardSummary.serviceStats || dashboardSummary.serviceCounts || {};
-      const rawBlockCounts = dashboardSummary.blockCounts || dashboardSummary.blockStats || dashboardSummary.blockDistribution || {};
-      const rawDistrictCounts = dashboardSummary.districtCounts || dashboardSummary.districtStats || dashboardSummary.districtDistribution || {};
-
-      const renewalServerCount = (rawCategoryCounts['Card Renewal'] || 0) +
-        (rawCategoryCounts['card renewal'] || 0) +
-        (rawCategoryCounts['Card_Renewal'] || 0) +
-        (rawCategoryCounts['renewal'] || 0);
-      const contributionServerCount = (rawCategoryCounts['Annual Contribution'] || 0) +
-        (rawCategoryCounts['annual contribution'] || 0) +
-        (rawCategoryCounts['Annual_Contribution'] || 0);
-      const effectiveRenewalServer = Math.max(renewalServerCount, contributionServerCount);
-
-      const effectiveNewCard = Math.max(
-        rawCategoryCounts['New Card'] || rawCategoryCounts['new card'] || rawCategoryCounts['New_Card'] || 0,
-        localCounts['New Card']
-      );
-      const effectiveRenewal = Math.max(effectiveRenewalServer, localCounts['Card Renewal']);
-      const effectiveMarriage = Math.max(
-        rawCategoryCounts['Marriage Benefit Apply'] || rawCategoryCounts['Marriage Benefit'] || rawCategoryCounts['Marriage_Benefit'] || 0,
-        localCounts['Marriage Benefit Apply']
-      );
-      const effectiveMaternity = Math.max(
-        rawCategoryCounts['Maternity Benefit Apply'] || rawCategoryCounts['Maternity Benefit'] || rawCategoryCounts['Maternity_Benefit'] || 0,
-        localCounts['Maternity Benefit Apply']
-      );
-      const effectiveDeath = Math.max(
-        rawCategoryCounts['Death Benefit Apply'] || rawCategoryCounts['Death Benefit'] || rawCategoryCounts['Death_Benefit'] || 0,
-        localCounts['Death Benefit Apply']
-      );
-      const effectiveEducation = Math.max(
-        rawCategoryCounts['Education Assistance Apply'] || rawCategoryCounts['Education Grant'] || rawCategoryCounts['Education_Assistance'] || 0,
-        localCounts['Education Assistance Apply']
-      );
-
-      const categoryCounts = {
-        'New Card': effectiveNewCard,
-        'Card Renewal': effectiveRenewal,
-        'Annual Contribution': effectiveRenewal,
-        'Marriage Benefit Apply': effectiveMarriage,
-        'Maternity Benefit Apply': effectiveMaternity,
-        'Death Benefit Apply': effectiveDeath,
-        'Education Assistance Apply': effectiveEducation
-      };
-
-      const computedTotal = Math.max(
-        dashboardSummary.totalActive || 0,
-        localApps.length,
-        effectiveNewCard + effectiveRenewal + effectiveMarriage + effectiveMaternity + effectiveDeath + effectiveEducation
-      );
-
-      const mergedBlockCounts = { ...rawBlockCounts };
-      Object.entries(localBlockCounts).forEach(([b, count]) => {
-        mergedBlockCounts[b] = Math.max(mergedBlockCounts[b] || 0, count);
-      });
-
-      const mergedDistrictCounts = { ...rawDistrictCounts };
-      Object.entries(localDistrictCounts).forEach(([d, count]) => {
-        mergedDistrictCounts[d] = Math.max(mergedDistrictCounts[d] || 0, count);
-      });
-
-      const mergedRecentDays = { ...(dashboardSummary.recentDaysMap || {}) };
-      Object.entries(localRecentDaysMap).forEach(([dt, count]) => {
-        mergedRecentDays[dt] = Math.max(mergedRecentDays[dt] || 0, count);
-      });
-
-      return {
-        totalActive: computedTotal,
-        pending: Math.max(dashboardSummary.pending || 0, localPending),
-        inProgress: Math.max(dashboardSummary.inProgress || 0, localInProgress),
-        queries: Math.max(dashboardSummary.queries || 0, localQueries),
-        approved: Math.max(dashboardSummary.approved || 0, localApproved),
-        bankRejections: Math.max(dashboardSummary.bankRejections || 0, localBankRejections),
-        completed: Math.max(dashboardSummary.completed || 0, localCompleted),
-        categoryCounts,
-        blockCounts: mergedBlockCounts,
-        districtCounts: mergedDistrictCounts,
-        todayCount: Math.max(dashboardSummary.todayCount || 0, localTodayCount),
-        recentDaysMap: mergedRecentDays
-      };
-    }
-
-    // Fallback: in-memory computation
     return {
-      totalActive: localApps.length,
-      pending: localPending,
-      inProgress: localInProgress,
-      queries: localQueries,
-      approved: localApproved,
-      bankRejections: localBankRejections,
-      completed: localCompleted,
-      categoryCounts: localCounts,
-      blockCounts: localBlockCounts,
-      districtCounts: localDistrictCounts,
-      todayCount: localTodayCount,
-      recentDaysMap: localRecentDaysMap
+      totalActive,
+      pending,
+      inProgress,
+      queries,
+      approved,
+      bankRejections,
+      completed,
+      categoryCounts,
+      blockCounts,
+      districtCounts,
+      todayCount: 0,
+      recentDaysMap: {}
     };
   }, [dashboardSummary, applications]);
 
@@ -598,62 +390,16 @@ export function AppProvider({ children }) {
     try {
       if (applicationToEdit) {
         const result = await dbUpdateApplication(applicationToEdit.id, formData);
-        const updatedRecord = result.record || {
-          ...applicationToEdit,
-          ...formData,
-          updatedAt: new Date().toISOString()
-        };
-
-        // 1. Instant 0ms optimistic local state update
-        setApplications(prev => prev.map(a => a.id === applicationToEdit.id ? updatedRecord : a));
-
-        // 2. Broadcast to active tables immediately
-        try {
-          window.dispatchEvent(new CustomEvent('shramiksetu:application_updated', {
-            detail: { record: updatedRecord, previous: applicationToEdit }
-          }));
-        } catch (e) { }
-
         if (result.completedAndDeleted) {
           showToast('success', `Application for "${formData.applicantName}" marked Completed and removed from active database.`);
         } else {
           showToast('success', `Application for "${formData.applicantName}" updated successfully.`);
         }
       } else {
-        const newRecord = await dbAddApplication(formData);
-
-        // 1. Instant 0ms optimistic local state update
-        setApplications(prev => [newRecord, ...prev.filter(a => a.id !== newRecord.id)]);
-
-        // 2. Optimistic dashboard stats update (0ms instant)
-        setDashboardSummary(prev => {
-          if (!prev) return prev;
-          const sType = newRecord.serviceType || 'New Card';
-          const newCategoryCounts = { ...(prev.categoryCounts || {}) };
-          newCategoryCounts[sType] = (newCategoryCounts[sType] || 0) + 1;
-          if (sType === 'Card Renewal' || sType === 'Annual Contribution') {
-            newCategoryCounts['Card Renewal'] = (newCategoryCounts['Card Renewal'] || 0) + 1;
-            newCategoryCounts['Annual Contribution'] = newCategoryCounts['Card Renewal'];
-          }
-          return {
-            ...prev,
-            totalActive: (prev.totalActive || 0) + 1,
-            pending: (prev.pending || 0) + 1,
-            categoryCounts: newCategoryCounts
-          };
-        });
-
-        // 3. Broadcast to all active module tables so the new row displays immediately (0ms)
-        try {
-          window.dispatchEvent(new CustomEvent('shramiksetu:application_created', {
-            detail: { record: newRecord }
-          }));
-        } catch (e) { }
-
+        await dbAddApplication(formData);
         showToast('success', `New application for "${formData.applicantName}" created successfully.`);
       }
-
-      refreshDashboardSummary(true);
+      refreshData();
       return true;
     } catch (e) {
       showToast('error', `Failed to save: ${e.message}`);
@@ -661,60 +407,14 @@ export function AppProvider({ children }) {
     }
   };
 
-  const handleDeleteApplication = async (id, extra = {}) => {
+  const handleDeleteApplication = async (id) => {
     try {
-      // 1. Instant 0ms optimistic local state purge
-      const filterOut = (list) => list.filter(a => {
-        if (id && a.id === id) return false;
-        if (extra.trackNo && a.trackNo === extra.trackNo) return false;
-        if (extra.cardNo && a.cardNo && a.cardNo === extra.cardNo) return false;
-        if (extra.aadhaarNo && a.aadhaarNo && a.aadhaarNo === extra.aadhaarNo) return false;
-        return true;
-      });
-
-      setApplications(prev => {
-        const next = filterOut(prev);
-        saveApplications(next);
-        return next;
-      });
-      clearPagedApplicationsCache();
-
-      // Decrement dashboard stats optimistically (0ms)
-      setDashboardSummary(prev => {
-        if (!prev) return prev;
-        const sType = extra.serviceType || 'New Card';
-        const newCatCounts = { ...(prev.categoryCounts || {}) };
-        if (newCatCounts[sType]) {
-          newCatCounts[sType] = Math.max(0, newCatCounts[sType] - 1);
-        }
-        if (sType === 'Card Renewal' || sType === 'Annual Contribution') {
-          newCatCounts['Card Renewal'] = Math.max(0, (newCatCounts['Card Renewal'] || 1) - 1);
-          newCatCounts['Annual Contribution'] = newCatCounts['Card Renewal'];
-        }
-        return {
-          ...prev,
-          totalActive: Math.max(0, (prev.totalActive || 1) - 1),
-          pending: Math.max(0, (prev.pending || 1) - 1),
-          categoryCounts: newCatCounts
-        };
-      });
-
-      // 2. Broadcast delete to active module tables immediately (0ms)
-      try {
-        window.dispatchEvent(new CustomEvent('shramiksetu:application_deleted', {
-          detail: { id, trackNo: extra.trackNo }
-        }));
-      } catch (e) { }
-
+      await dbDeleteApplication(id);
+      setApplications(prev => prev.filter(a => a.id !== id));
+      refreshDashboardSummary();
       showToast('success', 'Application deleted successfully.');
-
-      // 3. Non-blocking asynchronous cloud deletion
-      dbDeleteApplication(id, extra);
-      refreshDashboardSummary(true);
-      return true;
     } catch (e) {
       showToast('error', `Failed to delete: ${e.message}`);
-      return false;
     }
   };
 
@@ -737,22 +437,15 @@ export function AppProvider({ children }) {
         return a;
       }));
 
-      // Broadcast update to table immediately
-      try {
-        window.dispatchEvent(new CustomEvent('shramiksetu:application_updated', {
-          detail: { record: { id, status: newStatus, remarks } }
-        }));
-      } catch (e) { }
-
       await updateApplicationStatusTargeted(
-        id,
-        newStatus,
-        remarks,
-        serviceType,
-        user?.fullName || 'Operator',
+        id, 
+        newStatus, 
+        remarks, 
+        serviceType, 
+        user?.fullName || 'Operator', 
         user?.role || 'Staff'
       );
-
+      
       // Asynchronously refresh summary metrics
       refreshDashboardSummary();
       showToast('success', `Status updated to "${newStatus}".`);
@@ -863,10 +556,7 @@ export function AppProvider({ children }) {
   const handleAddMarriageVerification = (data) => {
     try {
       const newRecord = dbAddMarriageVerification(data);
-      setMarriageVerifications(prev => [newRecord, ...prev.filter(m => m.id !== newRecord.id)]);
-      try {
-        window.dispatchEvent(new CustomEvent('shramiksetu:marriage_verify_added', { detail: { record: newRecord } }));
-      } catch (e) { }
+      setMarriageVerifications(prev => [newRecord, ...prev]);
       showToast('success', `Marriage verification record added for "${newRecord.beneficiaryName}".`);
       return newRecord;
     } catch (e) {
@@ -880,9 +570,6 @@ export function AppProvider({ children }) {
       const updated = dbUpdateMarriageVerification(id, updates);
       if (updated) {
         setMarriageVerifications(prev => prev.map(r => r.id === id ? updated : r));
-        try {
-          window.dispatchEvent(new CustomEvent('shramiksetu:marriage_verify_updated', { detail: { record: updated } }));
-        } catch (e) { }
         showToast('success', `Marriage verification record updated.`);
       }
       return updated;
@@ -896,9 +583,6 @@ export function AppProvider({ children }) {
     try {
       const filtered = dbDeleteMarriageVerification(id);
       setMarriageVerifications(filtered);
-      try {
-        window.dispatchEvent(new CustomEvent('shramiksetu:marriage_verify_deleted', { detail: { id } }));
-      } catch (e) { }
       showToast('info', 'Marriage verification entry deleted.');
     } catch (e) {
       showToast('error', `Failed to delete: ${e.message}`);
@@ -927,7 +611,7 @@ export function AppProvider({ children }) {
         isSessionTrackerOpen,
         setIsSessionTrackerOpen,
         sessionDuration,
-
+        
         // Data & Caching
         applications,
         districts,
@@ -949,7 +633,6 @@ export function AppProvider({ children }) {
         setMobileSidebarOpen,
         toast,
         showToast,
-        clearToast,
 
         // Modals
         isAddEditOpen,

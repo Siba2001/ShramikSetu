@@ -1,20 +1,20 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import {
-  Search,
-  PlusCircle,
-  FileDown,
-  Filter,
-  Copy,
-  Check,
-  Edit3,
-  Eye,
-  Trash2,
-  CheckCircle2,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  MapPin,
-  User,
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { 
+  Search, 
+  PlusCircle, 
+  FileDown, 
+  Filter, 
+  Copy, 
+  Check, 
+  Edit3, 
+  Eye, 
+  Trash2, 
+  CheckCircle2, 
+  ChevronLeft, 
+  ChevronRight, 
+  Calendar, 
+  MapPin, 
+  User, 
   FileSpreadsheet,
   Phone,
   AlertCircle,
@@ -29,26 +29,25 @@ import {
 import { useApp } from '../context/AppContext';
 import { exportApplications, exportBlockWisePDF, exportBlockWiseExcel } from '../utils/exportUtils';
 import MarriageVerificationSection from '../components/marriage/MarriageVerificationSection';
-import { getCachedPagedApplications } from '../services/db';
 
-export default function ApplicationModulePage({
-  serviceKey,
-  title,
-  description,
-  icon: Icon
+export default function ApplicationModulePage({ 
+  serviceKey, 
+  title, 
+  description, 
+  icon: Icon 
 }) {
-  const {
-    applications,
-    allBlocksList,
-    allAgentsList,
-    handleOpenAddModal,
-    handleOpenEditModal,
-    handleOpenViewModal,
-    handleUpdateStatus,
+  const { 
+    applications, 
+    allBlocksList, 
+    allAgentsList, 
+    handleOpenAddModal, 
+    handleOpenEditModal, 
+    handleOpenViewModal, 
+    handleUpdateStatus, 
     handleDeleteApplication,
     marriageVerifications,
     fetchApplicationsPaged,
-    showToast
+    showToast 
   } = useApp();
 
   // Special Tab state for Marriage Benefit module
@@ -64,44 +63,16 @@ export default function ApplicationModulePage({
   const [selectedStatus, setSelectedStatus] = useState('All');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-
+  
   // Selection & Server-Side Pagination
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [copiedTrack, setCopiedTrack] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(50); // Default 50 records as required
 
-  // Server-side query state (Instant Cache Hydration for 0ms tab switching)
-  const [serverData, setServerData] = useState(() => {
-    return getCachedPagedApplications({
-      service: serviceKey,
-      page: 1,
-      pageSize: 50,
-      search: '',
-      block: 'All',
-      agent: 'All',
-      status: 'All'
-    });
-  });
+  // Server-side query state
+  const [serverData, setServerData] = useState(null);
   const [isLoadingPage, setIsLoadingPage] = useState(false);
-
-  // Instantly populate from memory cache on parameter or module changes
-  useEffect(() => {
-    const cached = getCachedPagedApplications({
-      service: serviceKey,
-      page: currentPage,
-      pageSize: pageSize,
-      search: debouncedSearch,
-      block: selectedBlock,
-      agent: selectedAgent,
-      status: selectedStatus,
-      fromDate: fromDate,
-      toDate: toDate
-    });
-    if (cached) {
-      setServerData(cached);
-    }
-  }, [serviceKey, currentPage, pageSize, debouncedSearch, selectedBlock, selectedAgent, selectedStatus, fromDate, toDate]);
 
   // Debounce search input (350ms) to eliminate per-keystroke stuttering
   useEffect(() => {
@@ -112,105 +83,10 @@ export default function ApplicationModulePage({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  const hasDataRef = useRef(false);
-  hasDataRef.current = Boolean(
-    (serverData && Array.isArray(serverData.data) && serverData.data.length > 0) ||
-    (applications && applications.length > 0)
-  );
-
-  // Instant 0ms Optimistic & Background SWR live synchronization listeners
-  useEffect(() => {
-    const handleRemoteSync = (e) => {
-      if (e.detail && e.detail.data && e.detail.params?.service === serviceKey) {
-        setServerData(e.detail.data);
-      }
-    };
-
-    const handleCreated = (e) => {
-      const record = e.detail?.record;
-      if (!record) return;
-
-      const isRenewal = (serviceKey === 'Card Renewal' || serviceKey === 'Annual Contribution');
-      const matchesService = isRenewal
-        ? (record.serviceType === 'Card Renewal' || record.serviceType === 'Annual Contribution')
-        : (record.serviceType === serviceKey || !serviceKey || serviceKey === 'All');
-
-      if (matchesService) {
-        setServerData(prev => {
-          const prevData = (prev && Array.isArray(prev.data)) ? prev.data : [];
-          const nextData = [record, ...prevData.filter(item => item.id !== record.id)];
-          const prevSummary = prev?.summary || { total: 0, pending: 0, inProgress: 0, queries: 0, approved: 0 };
-          const isPending = record.status === 'Pending' || record.status === 'E-Sign Pending';
-          return {
-            ...(prev || {}),
-            success: true,
-            totalRecords: (prev?.totalRecords || prevData.length) + 1,
-            data: nextData,
-            summary: {
-              ...prevSummary,
-              total: (prevSummary.total || 0) + 1,
-              pending: isPending ? (prevSummary.pending || 0) + 1 : prevSummary.pending
-            }
-          };
-        });
-      }
-    };
-
-    const handleUpdated = (e) => {
-      const record = e.detail?.record;
-      if (!record) return;
-      setServerData(prev => {
-        if (!prev || !Array.isArray(prev.data)) return prev;
-        return {
-          ...prev,
-          data: prev.data.map(item => item.id === record.id ? { ...item, ...record } : item)
-        };
-      });
-    };
-
-    const handleDeleted = (e) => {
-      const id = e.detail?.id;
-      const trackNo = e.detail?.trackNo;
-      if (!id && !trackNo) return;
-      setServerData(prev => {
-        if (!prev || !Array.isArray(prev.data)) return prev;
-        const filtered = prev.data.filter(item => {
-          if (id && item.id === id) return false;
-          if (trackNo && item.trackNo === trackNo) return false;
-          return true;
-        });
-        const prevSummary = prev?.summary;
-        return {
-          ...prev,
-          data: filtered,
-          totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
-          summary: prevSummary ? {
-            ...prevSummary,
-            total: Math.max(0, (prevSummary.total || 1) - 1)
-          } : prevSummary
-        };
-      });
-    };
-
-    window.addEventListener('shramiksetu:application_created', handleCreated);
-    window.addEventListener('shramiksetu:application_updated', handleUpdated);
-    window.addEventListener('shramiksetu:application_deleted', handleDeleted);
-    window.addEventListener('shramiksetu:paged_sync', handleRemoteSync);
-
-    return () => {
-      window.removeEventListener('shramiksetu:application_created', handleCreated);
-      window.removeEventListener('shramiksetu:application_updated', handleUpdated);
-      window.removeEventListener('shramiksetu:application_deleted', handleDeleted);
-      window.removeEventListener('shramiksetu:paged_sync', handleRemoteSync);
-    };
-  }, [serviceKey]);
-
-  // Load Paged Data directly from Google Apps Script Backend (Stale-While-Revalidate)
-  const loadPagedRecords = useCallback((bypassCache = false) => {
+  // Load Paged Data directly from Google Apps Script Backend
+  const loadPagedRecords = useCallback(() => {
     let isMounted = true;
-    if (!hasDataRef.current && !bypassCache) {
-      setIsLoadingPage(true);
-    }
+    setIsLoadingPage(true);
 
     fetchApplicationsPaged({
       service: serviceKey,
@@ -221,8 +97,7 @@ export default function ApplicationModulePage({
       agent: selectedAgent,
       status: selectedStatus,
       fromDate: fromDate,
-      toDate: toDate,
-      bypassCache
+      toDate: toDate
     }).then(res => {
       if (isMounted && res && res.success) {
         setServerData(res);
@@ -287,7 +162,7 @@ export default function ApplicationModulePage({
     return moduleApplications.filter(app => {
       if (debouncedSearch.trim()) {
         const q = debouncedSearch.toLowerCase();
-        const matches =
+        const matches = 
           (app.applicantName && app.applicantName.toLowerCase().includes(q)) ||
           (app.cardNo && app.cardNo.toLowerCase().includes(q)) ||
           (app.aadhaarNo && app.aadhaarNo.toLowerCase().includes(q)) ||
@@ -404,72 +279,9 @@ export default function ApplicationModulePage({
     }
   };
 
-  // Helper to retrieve records honoring active filters and checkbox selections
-  const getRecordsToExport = () => {
-    if (selectedIds.size > 0) {
-      const sourceList = (localFilteredList && localFilteredList.length > 0) ? localFilteredList : (displayRows || []);
-      const selectedList = sourceList.filter(r => selectedIds.has(r.id));
-      if (selectedList.length > 0) return selectedList;
-    }
-    if (localFilteredList && localFilteredList.length > 0) {
-      return localFilteredList;
-    }
-    return displayRows || [];
-  };
-
-  const handleDownloadPDF = () => {
-    const recordsToExport = getRecordsToExport();
-    if (!recordsToExport || recordsToExport.length === 0) {
-      showToast('warning', 'No records found matching current filters to export.');
-      return;
-    }
-    try {
-      const res = exportBlockWisePDF(recordsToExport, {
-        block: selectedBlock,
-        service: serviceKey,
-        status: selectedStatus,
-        agent: selectedAgent,
-        searchTerm: debouncedSearch,
-        fromDate,
-        toDate,
-        alreadyFiltered: true,
-        maskPII: false
-      });
-      showToast('success', `Exported ${res.count} records to official PDF: ${res.filename}`);
-    } catch (err) {
-      console.error('PDF Export Error:', err);
-      showToast('error', `Failed to generate PDF: ${err.message || 'Error creating document'}`);
-    }
-  };
-
-  const handleDownloadExcel = () => {
-    const recordsToExport = getRecordsToExport();
-    if (!recordsToExport || recordsToExport.length === 0) {
-      showToast('warning', 'No records found matching current filters to export.');
-      return;
-    }
-    try {
-      const res = exportBlockWiseExcel(recordsToExport, {
-        block: selectedBlock,
-        service: serviceKey,
-        status: selectedStatus,
-        agent: selectedAgent,
-        searchTerm: debouncedSearch,
-        fromDate,
-        toDate,
-        alreadyFiltered: true,
-        maskPII: false
-      });
-      showToast('success', `Exported ${res.count} records to Excel: ${res.filename}`);
-    } catch (err) {
-      console.error('Excel Export Error:', err);
-      showToast('error', `Failed to export Excel: ${err.message || 'Error creating document'}`);
-    }
-  };
-
   return (
     <div className="space-y-5 animate-fadeIn">
-
+      
       {/* Marriage Benefit Sub-Tabs Navigation */}
       {serviceKey === 'Marriage Benefit Apply' && (
         <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-2.5 rounded-2xl border border-slate-200/90 shadow-xs">
@@ -477,15 +289,17 @@ export default function ApplicationModulePage({
             <button
               type="button"
               onClick={() => setActiveMarriageTab('applications')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeMarriageTab === 'applications'
-                ? 'bg-[#0B1325] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-                }`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMarriageTab === 'applications'
+                  ? 'bg-[#0B1325] text-white shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+              }`}
             >
               <FileText className="w-4 h-4 text-blue-400" />
               <span>Benefit Applications</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${activeMarriageTab === 'applications' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
-                }`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                activeMarriageTab === 'applications' ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-600'
+              }`}>
                 {totalRecords}
               </span>
             </button>
@@ -493,22 +307,24 @@ export default function ApplicationModulePage({
             <button
               type="button"
               onClick={() => setActiveMarriageTab('verification')}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${activeMarriageTab === 'verification'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
-                : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50/60'
-                }`}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                activeMarriageTab === 'verification'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20'
+                  : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50/60'
+              }`}
             >
               <CheckCircle2 className="w-4 h-4 text-white" />
               <span>Marriage Verification List</span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${activeMarriageTab === 'verification' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'
-                }`}>
+              <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono ${
+                activeMarriageTab === 'verification' ? 'bg-blue-700 text-white' : 'bg-slate-100 text-slate-700'
+              }`}>
                 {(marriageVerifications || []).length}
               </span>
             </button>
           </div>
 
           <div className="text-[11px] text-slate-400 hidden sm:block pr-2">
-            {activeMarriageTab === 'verification'
+            {activeMarriageTab === 'verification' 
               ? 'Official Marriage Verification Register (All Blocks)'
               : 'Official Construction Worker Marriage Financial Assistance'}
           </div>
@@ -550,7 +366,7 @@ export default function ApplicationModulePage({
               {/* Refresh Paged Data Button */}
               <button
                 type="button"
-                onClick={() => loadPagedRecords(true)}
+                onClick={loadPagedRecords}
                 disabled={isLoadingPage}
                 className="p-2 bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 rounded-xl text-xs flex items-center transition-all cursor-pointer disabled:opacity-50"
                 title="Reload current page from server"
@@ -561,9 +377,17 @@ export default function ApplicationModulePage({
               {/* Download PDF Button */}
               <button
                 type="button"
-                onClick={handleDownloadPDF}
+                onClick={() => {
+                  exportBlockWisePDF(displayRows, {
+                    block: selectedBlock,
+                    service: serviceKey,
+                    status: selectedStatus,
+                    maskPII: false
+                  });
+                  showToast('success', `Generated ${title} Block-wise PDF Report.`);
+                }}
                 className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100/80 text-rose-700 border border-rose-200 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                title={`Download ${title} official PDF register matching current filters`}
+                title={`Download ${title} PDF report formatted by block`}
               >
                 <Printer className="w-4 h-4 text-rose-600" />
                 <span>Download PDF</span>
@@ -572,9 +396,17 @@ export default function ApplicationModulePage({
               {/* Download Excel Button */}
               <button
                 type="button"
-                onClick={handleDownloadExcel}
+                onClick={() => {
+                  exportBlockWiseExcel(displayRows, {
+                    block: selectedBlock,
+                    service: serviceKey,
+                    status: selectedStatus,
+                    maskPII: false
+                  });
+                  showToast('success', `Exported ${title} Block-wise Excel.`);
+                }}
                 className="px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100/80 text-emerald-700 border border-emerald-200 font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
-                title={`Download official Excel sheet for ${title} matching current filters`}
+                title={`Download official Excel sheet for ${title}`}
               >
                 <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                 <span>Download Excel</span>
@@ -614,9 +446,9 @@ export default function ApplicationModulePage({
 
           {/* Main Filter & Action Toolbar */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-4 space-y-3.5 shadow-xs">
-
+            
             <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
-
+              
               {/* Debounced Search Box */}
               <div className="relative flex-1 max-w-md">
                 {isLoadingPage ? (
@@ -632,8 +464,8 @@ export default function ApplicationModulePage({
                   className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-xl text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 focus:bg-white transition-all"
                 />
                 {searchInput && (
-                  <button
-                    onClick={() => { setSearchInput(''); setDebouncedSearch(''); }}
+                  <button 
+                    onClick={() => { setSearchInput(''); setDebouncedSearch(''); }} 
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-700"
                   >
                     Clear
@@ -643,7 +475,7 @@ export default function ApplicationModulePage({
 
               {/* Filters Bar */}
               <div className="flex flex-wrap items-center gap-2">
-
+                
                 {/* Block Filter */}
                 <select
                   value={selectedBlock}
@@ -744,9 +576,9 @@ export default function ApplicationModulePage({
 
           {/* Main Table */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative">
-            {isLoadingPage && (!displayRows || displayRows.length === 0) && (
-              <div className="py-16 flex items-center justify-center">
-                <div className="flex items-center gap-2 bg-slate-50 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
+            {isLoadingPage && (
+              <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] flex items-center justify-center z-10">
+                <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-xl shadow-md border border-slate-200 text-xs font-bold text-slate-700">
                   <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
                   <span>Loading records...</span>
                 </div>
@@ -801,7 +633,7 @@ export default function ApplicationModulePage({
                       const displaySl = (currentPage - 1) * pageSize + idx + 1;
 
                       return (
-                        <tr
+                        <tr 
                           key={app.id || idx}
                           className={`hover:bg-blue-50/30 transition-colors ${isSelected ? 'bg-blue-50/50' : ''}`}
                         >
@@ -878,7 +710,7 @@ export default function ApplicationModulePage({
 
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1">
-
+                              
                               <button
                                 onClick={() => handleOpenViewModal(app)}
                                 className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
@@ -908,36 +740,9 @@ export default function ApplicationModulePage({
                               </button>
 
                               <button
-                                onClick={async () => {
+                                onClick={() => {
                                   if (window.confirm(`Delete application for ${app.applicantName}?`)) {
-                                    const ok = await handleDeleteApplication(app.id, {
-                                      trackNo: app.trackNo,
-                                      cardNo: app.cardNo,
-                                      aadhaarNo: app.aadhaarNo,
-                                      applicantName: app.applicantName,
-                                      block: app.block,
-                                      serviceType: app.serviceType || serviceKey
-                                    });
-                                    if (ok) {
-                                      setServerData(prev => {
-                                        if (!prev || !Array.isArray(prev.data)) return prev;
-                                        const filtered = prev.data.filter(item => {
-                                          if (app.id && item.id === app.id) return false;
-                                          if (app.trackNo && item.trackNo === app.trackNo) return false;
-                                          return true;
-                                        });
-                                        return {
-                                          ...prev,
-                                          data: filtered,
-                                          totalRecords: Math.max(0, (prev.totalRecords || 1) - 1),
-                                          summary: prev.summary ? {
-                                            ...prev.summary,
-                                            total: Math.max(0, (prev.summary.total || 1) - 1),
-                                            pending: (app.status === 'Pending' || app.status === 'E-Sign Pending') ? Math.max(0, (prev.summary.pending || 1) - 1) : prev.summary.pending
-                                          } : prev.summary
-                                        };
-                                      });
-                                    }
+                                    handleDeleteApplication(app.id);
                                   }
                                 }}
                                 className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
