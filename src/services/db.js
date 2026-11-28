@@ -89,6 +89,34 @@ export function saveApplications(apps) {
 }
 
 /**
+ * Merge a batch of incoming applications into local storage without replacing unrelated records
+ */
+export function mergeApplicationsIntoStorage(newItems) {
+  if (!Array.isArray(newItems) || newItems.length === 0) return loadApplications();
+  try {
+    const existing = loadApplications();
+    const map = new Map();
+    existing.forEach(item => {
+      if (item && (item.id || item.trackNo)) {
+        map.set(item.id || item.trackNo, item);
+      }
+    });
+    newItems.forEach(item => {
+      if (item && (item.id || item.trackNo)) {
+        const key = item.id || item.trackNo;
+        const prev = map.get(key) || {};
+        map.set(key, { ...prev, ...item });
+      }
+    });
+    const merged = Array.from(map.values());
+    saveApplications(merged);
+    return merged;
+  } catch (e) {
+    return loadApplications();
+  }
+}
+
+/**
  * Load Districts & their Blocks
  */
 export function loadDistricts() {
@@ -558,9 +586,28 @@ export async function fetchFromGoogleSheet(serviceType = null) {
         return true;
       });
 
+      // When fetching for a specific module/serviceType, preserve applications from all other services
+      const allExisting = loadApplications();
+      let otherServicesApps = [];
+      if (serviceType) {
+        otherServicesApps = allExisting.filter(a => {
+          if (!a) return false;
+          if (serviceType === 'Card Renewal' || serviceType === 'Annual Contribution') {
+            return a.serviceType !== 'Card Renewal' && a.serviceType !== 'Annual Contribution';
+          }
+          return a.serviceType !== serviceType;
+        });
+      }
+
       const now = Date.now();
-      const inFlightLocal = loadApplications().filter(localApp => {
+      const inFlightLocal = allExisting.filter(localApp => {
         if (!localApp || !localApp.id) return false;
+        if (serviceType) {
+          const isTargetService = (serviceType === 'Card Renewal' || serviceType === 'Annual Contribution')
+            ? (localApp.serviceType === 'Card Renewal' || localApp.serviceType === 'Annual Contribution')
+            : (localApp.serviceType === serviceType);
+          if (!isTargetService) return false;
+        }
         if (validRemote.some(r => r.id === localApp.id || (r.trackNo && r.trackNo === localApp.trackNo))) {
           return false;
         }
@@ -568,7 +615,7 @@ export async function fetchFromGoogleSheet(serviceType = null) {
         return ageMs < 45000;
       });
 
-      const synced = [...inFlightLocal, ...validRemote];
+      const synced = [...otherServicesApps, ...inFlightLocal, ...validRemote];
       saveApplications(synced);
 
       return synced;

@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  Users, 
-  IndianRupee, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
-  CheckCircle2, 
-  Clock, 
-  Search, 
-  RefreshCw, 
-  PlusCircle, 
-  Banknote, 
-  History, 
-  ChevronLeft, 
-  ChevronRight, 
+import {
+  Users,
+  IndianRupee,
+  ArrowUpRight,
+  ArrowDownLeft,
+  CheckCircle2,
+  Clock,
+  Search,
+  RefreshCw,
+  PlusCircle,
+  Banknote,
+  History,
+  ChevronLeft,
+  ChevronRight,
   Filter,
   AlertTriangle,
   FileSpreadsheet,
@@ -21,10 +21,10 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
-import { 
-  getAgentPaymentDashboard, 
-  addAgentDue, 
-  receiveAgentPayment 
+import {
+  getAgentPaymentDashboard,
+  addAgentDue,
+  receiveAgentPayment
 } from '../services/agentPaymentService';
 import AddDueModal from '../components/payments/AddDueModal';
 import ReceivePaymentModal from '../components/payments/ReceivePaymentModal';
@@ -32,11 +32,15 @@ import PaymentHistoryModal from '../components/payments/PaymentHistoryModal';
 import WhatsAppReminderModal from '../components/payments/WhatsAppReminderModal';
 import ReminderHistoryModal from '../components/payments/ReminderHistoryModal';
 
+// High-speed session cache for instant Agent Payments navigation
+let agentPaymentDashboardCache = null;
+let agentPaymentDashboardCacheTime = 0;
+
 export default function AgentPaymentsPage() {
   const { agents, showToast } = useApp();
 
-  const [loading, setLoading] = useState(true);
-  const [dashboardData, setDashboardData] = useState({
+  const [loading, setLoading] = useState(() => !agentPaymentDashboardCache);
+  const [dashboardData, setDashboardData] = useState(() => agentPaymentDashboardCache || {
     totalAgents: 0,
     totalDue: 0,
     totalReceived: 0,
@@ -64,10 +68,14 @@ export default function AgentPaymentsPage() {
 
   // Fetch dashboard stats & agent payment records
   const loadPaymentData = useCallback(async () => {
-    setLoading(true);
+    if (!agentPaymentDashboardCache) {
+      setLoading(true);
+    }
     try {
       const res = await getAgentPaymentDashboard();
       if (res && res.success) {
+        agentPaymentDashboardCache = res;
+        agentPaymentDashboardCacheTime = Date.now();
         setDashboardData(res);
       }
     } catch (err) {
@@ -93,8 +101,8 @@ export default function AgentPaymentsPage() {
     }
 
     return agents.map(agent => {
-      const summary = summaryMap.get(String(agent.id)) || 
-                      summaryMap.get(String(agent.name).toLowerCase()) || {};
+      const summary = summaryMap.get(String(agent.id)) ||
+        summaryMap.get(String(agent.name).toLowerCase()) || {};
 
       const totalDue = Number(summary.totalDue || 0);
       const totalPaid = Number(summary.totalPaid || 0);
@@ -249,7 +257,7 @@ export default function AgentPaymentsPage() {
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Agent_Payments');
-    XLSX.writeFile(workbook, `Agent_Payments_Summary_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(workbook, `Agent_Payments_Summary_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const fmt = (n) => `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -284,7 +292,7 @@ export default function AgentPaymentsPage() {
   };
 
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-5 animate-fadeIn">
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -441,7 +449,7 @@ export default function AgentPaymentsPage() {
 
         {/* Agent Wise Payment Table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-xs min-w-[920px]">
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-semibold border-b border-slate-200">
                 <th className="py-3 px-3.5 w-12 text-center">SL</th>

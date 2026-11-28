@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   Database, 
@@ -78,31 +79,31 @@ export default function GoogleSheetModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-      <div className="bg-[#0c1429] rounded-2xl max-w-lg w-full border border-slate-700 shadow-2xl my-8 overflow-hidden text-slate-100">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-[#0c1429] rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col border border-slate-700 shadow-2xl overflow-hidden text-slate-100">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A]">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A] shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">
               <Database className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Cloud Database Sync</h2>
-              <p className="text-xs text-slate-400">Google Sheets Web App Backend</p>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-white truncate">Cloud Database Sync</h2>
+              <p className="text-xs text-slate-400 truncate">Google Sheets Web App Backend</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           
           {/* Endpoint Input */}
           <div>
@@ -191,7 +192,7 @@ export default function GoogleSheetModal({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end">
+        <div className="px-4 sm:px-6 py-3.5 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-5 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
@@ -203,4 +204,6 @@ export default function GoogleSheetModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

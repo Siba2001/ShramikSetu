@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, FileUp, CheckCircle, AlertTriangle, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -119,31 +120,31 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }) {
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-      <div className="bg-[#0c1429] rounded-2xl max-w-xl w-full border border-slate-700 shadow-2xl my-8 overflow-hidden text-slate-100">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-[#0c1429] rounded-2xl max-w-xl w-full max-h-[92vh] flex flex-col border border-slate-700 shadow-2xl overflow-hidden text-slate-100">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A]">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A] shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">
               <FileUp className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Import Excel / CSV Applications</h2>
-              <p className="text-xs text-slate-400">Upload existing government or field worker spreadsheets</p>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-white truncate">Import Excel / CSV Applications</h2>
+              <p className="text-xs text-slate-400 truncate">Upload existing government or field worker spreadsheets</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           
           {/* File input */}
           <div className="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-2xl p-6 text-center transition-colors bg-[#080D1A]">
@@ -247,11 +248,11 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end space-x-3">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end space-x-2 sm:space-x-3 shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="px-3.5 sm:px-4 py-2 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
           >
             Cancel
           </button>
@@ -259,15 +260,17 @@ export default function ImportModal({ isOpen, onClose, onImportSuccess }) {
             type="button"
             disabled={totalRows === 0 || isProcessing}
             onClick={handleConfirmImport}
-            className="px-5 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-blue-500/25 flex items-center gap-2 cursor-pointer"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all shadow-md shadow-blue-500/25 flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0"
           >
-            <CheckCircle className="w-4 h-4" />
-            <span>{isProcessing ? 'Importing...' : `Import ${totalRows} Applications`}</span>
+            <CheckCircle className="w-4 h-4 shrink-0" />
+            <span className="truncate">{isProcessing ? 'Importing...' : `Import ${totalRows} Applications`}</span>
           </button>
         </div>
 
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
 

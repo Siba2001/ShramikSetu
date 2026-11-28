@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   X, 
   FileDown, 
@@ -90,31 +91,31 @@ export default function ExportModal({ isOpen, onClose, applications }) {
     }, 300);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-[#0c1429] rounded-2xl max-w-lg w-full border border-slate-700 shadow-2xl overflow-hidden text-slate-100">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-[#0c1429] rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col border border-slate-700 shadow-2xl overflow-hidden text-slate-100">
         
         {/* Modal Header */}
-        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A]">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-800 flex items-center justify-between bg-[#080D1A] shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/25 shrink-0">
               <FileDown className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-base font-bold text-white">Block-Wise Report Download</h2>
-              <p className="text-xs text-slate-400">Official Block-Wise PDF & Excel reports with custom heading</p>
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-white truncate">Block-Wise Report Download</h2>
+              <p className="text-xs text-slate-400 truncate">Official Block-Wise PDF & Excel reports with custom heading</p>
             </div>
           </div>
           <button 
             onClick={onClose} 
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 space-y-4">
+        <div className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           
           {/* Target Block Selection */}
           <div>
@@ -270,17 +271,17 @@ export default function ExportModal({ isOpen, onClose, applications }) {
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end space-x-3">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-t border-slate-800 bg-[#080D1A] flex items-center justify-end space-x-2 sm:space-x-3 shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
+            className="px-3.5 sm:px-4 py-2 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer shrink-0"
           >
             Close
           </button>
           <button
             onClick={handleExecuteExport}
             disabled={isExporting || matchingCount === 0}
-            className={`px-5 py-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all shadow-md flex items-center gap-2 cursor-pointer ${
+            className={`px-4 sm:px-5 py-2 sm:py-2.5 text-xs font-bold text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-all shadow-md flex items-center gap-1.5 sm:gap-2 cursor-pointer shrink-0 ${
               exportFormat === 'pdf' 
                 ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/25' 
                 : exportFormat === 'xlsx'
@@ -288,12 +289,14 @@ export default function ExportModal({ isOpen, onClose, applications }) {
                 : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/25'
             }`}
           >
-            {exportFormat === 'pdf' ? <Printer className="w-4 h-4" /> : <FileSpreadsheet className="w-4 h-4" />}
-            <span>{isExporting ? 'Generating Report...' : `Download ${matchingCount} Records (${exportFormat.toUpperCase()})`}</span>
+            {exportFormat === 'pdf' ? <Printer className="w-4 h-4 shrink-0" /> : <FileSpreadsheet className="w-4 h-4 shrink-0" />}
+            <span className="truncate">{isExporting ? 'Generating Report...' : `Download ${matchingCount} Records (${exportFormat.toUpperCase()})`}</span>
           </button>
         </div>
 
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

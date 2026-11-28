@@ -264,13 +264,31 @@ export function AppProvider({ children }) {
     try {
       const live = await fetchFromGoogleSheet(serviceType);
       if (live && Array.isArray(live)) {
-        setApplications(live);
+        setApplications(loadApplications());
         return live;
       }
     } catch (e) {
       console.warn('Module sync notice:', e);
     }
     return loadApplications();
+  }, []);
+
+  // Sync a subset of newly fetched paged records into global application state
+  const syncApplicationsSubset = useCallback((newItems) => {
+    if (!newItems || !Array.isArray(newItems) || newItems.length === 0) return;
+    setApplications(prev => {
+      const map = new Map(prev.map(item => [item.id || item.trackNo, item]));
+      newItems.forEach(item => {
+        if (item && (item.id || item.trackNo)) {
+          const key = item.id || item.trackNo;
+          const existing = map.get(key) || {};
+          map.set(key, { ...existing, ...item });
+        }
+      });
+      const merged = Array.from(map.values());
+      saveApplications(merged);
+      return merged;
+    });
   }, []);
 
   // Intelligent Polling: Only poll lightweight dashboard summary and reference data
@@ -643,6 +661,7 @@ export function AppProvider({ children }) {
         refreshDashboardSummary,
         fetchModuleApplications,
         fetchApplicationsPaged,
+        syncApplicationsSubset,
         pendingSyncCount,
         gasUrl,
 

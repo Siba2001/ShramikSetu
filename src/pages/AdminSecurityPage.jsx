@@ -424,7 +424,7 @@ export default function AdminSecurityPage() {
         )}
 
         {/* Top Tab Bar matching Divy-Impex layout */}
-        <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs mb-6 flex flex-wrap gap-1.5">
+        <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-2xs mb-6 flex overflow-x-auto no-scrollbar gap-1.5 flex-nowrap sm:flex-wrap">
           
           {/* Tab 1: Change / Reset Password */}
           <button
@@ -825,7 +825,7 @@ export default function AdminSecurityPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[620px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold text-[10px] tracking-wider">
                   <tr>
                     <th className="py-3 px-4">User</th>
@@ -950,7 +950,7 @@ export default function AdminSecurityPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full text-left text-xs min-w-[620px]">
                 <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold text-[10px] tracking-wider">
                   <tr>
                     <th className="py-3 px-4">Timestamp</th>

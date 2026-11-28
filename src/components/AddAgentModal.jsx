@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, UserPlus, Phone, MapPin, Camera, Save, User, Edit3 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
@@ -111,21 +112,21 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-md w-full border border-slate-200/90 shadow-2xl my-8 overflow-hidden text-slate-800">
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-2xl max-w-md w-full max-h-[92vh] flex flex-col border border-slate-200/90 shadow-2xl overflow-hidden text-slate-800">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-          <div className="flex items-center space-x-2.5">
-            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+        <div className="px-4 sm:px-6 py-3.5 sm:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
               {agentToEdit ? <Edit3 className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
             </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
+            <div className="min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 truncate">
                 {agentToEdit ? `Edit Agent: ${agentToEdit.name}` : 'Add Field Agent / Worker'}
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-500 truncate">
                 {agentToEdit ? 'Update agent details, mobile, village, and photo' : 'Register new field operator with contact & village info'}
               </p>
             </div>
@@ -133,14 +134,14 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
           <button 
             type="button"
             onClick={onClose} 
-            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 flex-1 overflow-y-auto">
           
           {/* Photo Upload Section */}
           <div className="flex items-center space-x-4 p-3 bg-slate-50 rounded-2xl border border-slate-200/80">
@@ -252,7 +253,7 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
           )}
 
           {/* Footer */}
-          <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+          <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2 shrink-0 bg-slate-50/90 -mx-4 -mb-4 px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6">
             <button
               type="button"
               onClick={onClose}
@@ -275,4 +276,6 @@ export default function AddAgentModal({ isOpen, onClose, agentToEdit = null, onA
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

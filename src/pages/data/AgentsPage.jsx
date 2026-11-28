@@ -184,7 +184,7 @@ export default function AgentsPage() {
             </button>
           </div>
 
-          <div className="max-h-[580px] overflow-y-auto space-y-1.5 pr-0.5">
+          <div className="max-h-[360px] lg:max-h-[580px] overflow-y-auto space-y-1.5 pr-0.5">
             {filteredAgents.length === 0 ? (
               <div className="py-12 text-center text-xs text-slate-400">
                 No agents found matching search.
@@ -369,7 +369,7 @@ export default function AgentsPage() {
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs">
+                  <table className="w-full text-left text-xs min-w-[550px]">
                     <thead>
                       <tr className="bg-slate-50 text-slate-500 uppercase text-[10px] font-bold border-b border-slate-200">
                         <th className="py-2.5 px-3">Beneficiary Name</th>

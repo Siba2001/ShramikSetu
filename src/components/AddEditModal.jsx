@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Save,
@@ -184,19 +185,19 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
     setFormData(prev => ({ ...prev, agent: newAgent.name }));
   };
 
-  return (
+  const modalContent = (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-        <div className="bg-white rounded-2xl max-w-lg w-full border border-slate-200/90 shadow-2xl my-6 overflow-hidden text-slate-800">
+      <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+        <div className="bg-white rounded-2xl max-w-lg w-full max-h-[92vh] flex flex-col border border-slate-200/90 shadow-2xl overflow-hidden text-slate-800">
 
           {/* Header */}
-          <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs">
+          <div className="px-4 sm:px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 shrink-0">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
                 {isNewCard ? <FileText className="w-4 h-4" /> : isRenewal ? <CreditCard className="w-4 h-4" /> : isDeath ? <Cross className="w-4 h-4" /> : isMaternity ? <Baby className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
               </div>
-              <div>
-                <h2 className="text-sm font-bold text-slate-900">
+              <div className="min-w-0">
+                <h2 className="text-sm font-bold text-slate-900 truncate">
                   {applicationToEdit
                     ? `Edit Application: ${formData.applicantName || ''}`
                     : isNewCard
@@ -210,7 +211,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
                             : 'New Application Entry'
                   }
                 </h2>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-[11px] text-slate-500 truncate">
                   {applicationToEdit
                     ? 'Update beneficiary details and records'
                     : isNewCard
@@ -229,14 +230,14 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
             <button
               type="button"
               onClick={onClose}
-              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer"
+              className="text-slate-400 hover:text-slate-700 p-1 rounded-lg hover:bg-slate-200/60 transition-colors cursor-pointer shrink-0"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Form Body */}
-          <form onSubmit={handleSubmit} className="p-4 sm:p-5 space-y-3">
+          <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-3">
 
             {/* If NOT editing, Scheme Selector */}
             {!applicationToEdit && (
@@ -1007,7 +1008,7 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
             )}
 
             {/* Footer */}
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2">
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end space-x-2 shrink-0 bg-slate-50/90 -mx-4 -mb-4 px-4 py-3 sm:-mx-5 sm:-mb-5 sm:px-5">
               <button
                 type="button"
                 onClick={onClose}
@@ -1038,4 +1039,6 @@ export default function AddEditModal({ isOpen, onClose, onSave, applicationToEdi
       />
     </>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

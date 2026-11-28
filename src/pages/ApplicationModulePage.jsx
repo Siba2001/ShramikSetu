@@ -30,6 +30,21 @@ import { useApp } from '../context/AppContext';
 import { exportApplications, exportBlockWisePDF, exportBlockWiseExcel } from '../utils/exportUtils';
 import MarriageVerificationSection from '../components/marriage/MarriageVerificationSection';
 
+// High-speed in-memory query cache for instant tab-switching with zero delay
+const pagedQueryCache = new Map();
+
+export function clearServiceQueryCache(serviceKey = null) {
+  if (!serviceKey) {
+    pagedQueryCache.clear();
+    return;
+  }
+  for (const key of pagedQueryCache.keys()) {
+    if (key.startsWith(serviceKey)) {
+      pagedQueryCache.delete(key);
+    }
+  }
+}
+
 export default function ApplicationModulePage({ 
   serviceKey, 
   title, 
@@ -48,6 +63,7 @@ export default function ApplicationModulePage({
     marriageVerifications,
     fetchModuleApplications,
     fetchApplicationsPaged,
+    syncApplicationsSubset,
     showToast 
   } = useApp();
 
@@ -76,33 +92,6 @@ export default function ApplicationModulePage({
   const [isLoadingPage, setIsLoadingPage] = useState(false);
   const [loadingModule, setLoadingModule] = useState(false);
 
-  // Dedicated Module Fetcher on Tab Click (Previous architecture that immediately calls module API)
-  useEffect(() => {
-    let isMounted = true;
-    
-    // Check if we already have records in memory for this module
-    const currentModuleApps = applications.filter(a => {
-      if (serviceKey === 'Card Renewal' || serviceKey === 'Annual Contribution') {
-        return a.serviceType === 'Card Renewal' || a.serviceType === 'Annual Contribution';
-      }
-      return a.serviceType === serviceKey;
-    });
-
-    if (currentModuleApps.length === 0) {
-      setLoadingModule(true);
-    }
-
-    if (fetchModuleApplications) {
-      fetchModuleApplications(serviceKey).finally(() => {
-        if (isMounted) {
-          setLoadingModule(false);
-        }
-      });
-    }
-
-    return () => { isMounted = false; };
-  }, [serviceKey, fetchModuleApplications]);
-
   // Debounce search input (350ms) to eliminate per-keystroke stuttering
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -112,10 +101,24 @@ export default function ApplicationModulePage({
     return () => clearTimeout(timer);
   }, [searchInput]);
 
-  // Load Paged Data directly from Google Apps Script Backend
+  // High-Speed Server-Side Paged Records Loader with Instant Memory Caching
   const loadPagedRecords = useCallback(() => {
     let isMounted = true;
-    setIsLoadingPage(true);
+    const cacheKey = `${serviceKey}:${currentPage}:${pageSize}:${debouncedSearch}:${selectedBlock}:${selectedAgent}:${selectedStatus}:${fromDate}:${toDate}`;
+    
+    // Check if we already have this query in session cache
+    const cached = pagedQueryCache.get(cacheKey);
+    if (cached && cached.data) {
+      setServerData(cached.data);
+      // If cached data is fresh (< 60s), avoid flashing loading states
+      if (Date.now() - cached.timestamp < 60000) {
+        setIsLoadingPage(false);
+      } else {
+        setIsLoadingPage(true);
+      }
+    } else {
+      setIsLoadingPage(true);
+    }
 
     fetchApplicationsPaged({
       service: serviceKey,
@@ -129,7 +132,11 @@ export default function ApplicationModulePage({
       toDate: toDate
     }).then(res => {
       if (isMounted && res && res.success) {
+        pagedQueryCache.set(cacheKey, { data: res, timestamp: Date.now() });
         setServerData(res);
+        if (Array.isArray(res.data) && res.data.length > 0 && typeof syncApplicationsSubset === 'function') {
+          syncApplicationsSubset(res.data);
+        }
       }
     }).catch(err => {
       console.warn('Paged records sync notice:', err);
@@ -138,7 +145,7 @@ export default function ApplicationModulePage({
     });
 
     return () => { isMounted = false; };
-  }, [serviceKey, currentPage, pageSize, debouncedSearch, selectedBlock, selectedAgent, selectedStatus, fromDate, toDate, fetchApplicationsPaged]);
+  }, [serviceKey, currentPage, pageSize, debouncedSearch, selectedBlock, selectedAgent, selectedStatus, fromDate, toDate, fetchApplicationsPaged, syncApplicationsSubset]);
 
   useEffect(() => {
     const cleanup = loadPagedRecords();
@@ -393,6 +400,7 @@ export default function ApplicationModulePage({
                 type="button"
                 onClick={() => {
                   setLoadingModule(true);
+                  clearServiceQueryCache(serviceKey);
                   if (fetchModuleApplications) {
                     fetchModuleApplications(serviceKey).finally(() => {
                       setLoadingModule(false);
@@ -486,8 +494,8 @@ export default function ApplicationModulePage({
             <div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
               
               {/* Debounced Search Box */}
-              <div className="relative flex-1 max-w-md">
-                {isLoadingPage ? (
+              <div className="relative flex-1 w-full lg:max-w-md">
+                {isLoadingPage && displayRows.length === 0 ? (
                   <Loader2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-blue-600 animate-spin" />
                 ) : (
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -510,13 +518,13 @@ export default function ApplicationModulePage({
               </div>
 
               {/* Filters Bar */}
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                 
                 {/* Block Filter */}
                 <select
                   value={selectedBlock}
                   onChange={(e) => { setSelectedBlock(e.target.value); setCurrentPage(1); }}
-                  className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500"
+                  className="px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 flex-1 sm:flex-initial"
                 >
                   <option value="All">All Blocks</option>
                   {allBlocksList.map(b => (
@@ -528,7 +536,7 @@ export default function ApplicationModulePage({
                 <select
                   value={selectedAgent}
                   onChange={(e) => { setSelectedAgent(e.target.value); setCurrentPage(1); }}
-                  className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500"
+                  className="px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 flex-1 sm:flex-initial"
                 >
                   <option value="All">All Agents</option>
                   {allAgentsList.map(ag => (
@@ -540,7 +548,7 @@ export default function ApplicationModulePage({
                 <select
                   value={selectedStatus}
                   onChange={(e) => { setSelectedStatus(e.target.value); setCurrentPage(1); }}
-                  className="px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500"
+                  className="px-2.5 sm:px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 flex-1 sm:flex-initial"
                 >
                   <option value="All">All Statuses</option>
                   <option value="Pending">Pending / E-Sign</option>
@@ -551,23 +559,23 @@ export default function ApplicationModulePage({
                 </select>
 
                 {/* Date Filters */}
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-600">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-600 flex-1 sm:flex-initial min-w-[125px]">
                   <span className="text-slate-500 text-[10px] font-bold">From:</span>
                   <input
                     type="date"
                     value={fromDate}
                     onChange={(e) => { setFromDate(e.target.value); setCurrentPage(1); }}
-                    className="bg-transparent text-xs text-slate-800 focus:outline-none"
+                    className="bg-transparent text-xs text-slate-800 focus:outline-none w-full"
                   />
                 </div>
 
-                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-600">
+                <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-600 flex-1 sm:flex-initial min-w-[125px]">
                   <span className="text-slate-500 text-[10px] font-bold">To:</span>
                   <input
                     type="date"
                     value={toDate}
                     onChange={(e) => { setToDate(e.target.value); setCurrentPage(1); }}
-                    className="bg-transparent text-xs text-slate-800 focus:outline-none"
+                    className="bg-transparent text-xs text-slate-800 focus:outline-none w-full"
                   />
                 </div>
 
@@ -575,7 +583,7 @@ export default function ApplicationModulePage({
                 <select
                   value={pageSize}
                   onChange={(e) => { setPageSize(parseInt(e.target.value, 10)); setCurrentPage(1); }}
-                  className="px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500"
+                  className="px-2.5 py-2 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none focus:border-blue-500 shrink-0"
                   title="Rows per page"
                 >
                   <option value={25}>25 / page</option>
@@ -612,7 +620,15 @@ export default function ApplicationModulePage({
 
           {/* Main Table */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden relative min-h-[240px]">
-            {(isLoadingPage || (loadingModule && moduleApplications.length === 0)) && (
+            {/* Subtle top progress bar during background revalidation */}
+            {isLoadingPage && displayRows.length > 0 && (
+              <div className="absolute top-0 left-0 right-0 h-1 bg-blue-100 overflow-hidden z-20">
+                <div className="h-full bg-blue-600 animate-pulse w-full" />
+              </div>
+            )}
+
+            {/* Centered blocking loader ONLY when there are zero records to display */}
+            {(isLoadingPage || loadingModule) && displayRows.length === 0 && (
               <div className="absolute inset-0 bg-white/80 backdrop-blur-xs flex flex-col items-center justify-center z-10 gap-2.5">
                 <div className="w-9 h-9 rounded-full border-3 border-blue-200 border-t-blue-600 animate-spin" />
                 <div className="text-center">
@@ -623,7 +639,7 @@ export default function ApplicationModulePage({
             )}
 
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs border-collapse">
+              <table className="w-full text-left text-xs border-collapse min-w-[780px]">
                 <thead>
                   <tr className="bg-slate-50/90 border-b border-slate-200 text-slate-500 uppercase text-[10.5px] font-bold tracking-wider">
                     <th className="py-3.5 px-4 w-10 text-center">

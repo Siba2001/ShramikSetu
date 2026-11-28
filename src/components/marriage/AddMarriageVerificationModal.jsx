@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Save, Heart, Calendar, FileText, User, MapPin, Phone, ShieldCheck, AlertCircle } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { toDateInputValue } from '../../utils/dateUtils';
@@ -9,11 +10,11 @@ export default function AddMarriageVerificationModal({
   recordToEdit = null,
   defaultBlock = ''
 }) {
-  const { 
-    allBlocksList, 
-    handleAddMarriageVerification, 
-    handleUpdateMarriageVerification, 
-    marriageVerifications 
+  const {
+    allBlocksList,
+    handleAddMarriageVerification,
+    handleUpdateMarriageVerification,
+    marriageVerifications
   } = useApp();
 
   const [formData, setFormData] = useState({
@@ -132,40 +133,40 @@ export default function AddMarriageVerificationModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-slate-950/60 backdrop-blur-xs animate-fadeIn overflow-y-auto">
-      <div 
-        className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl w-full max-w-3xl overflow-hidden my-auto animate-scaleUp"
+  const modalContent = (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-slate-950/60 backdrop-blur-sm animate-fadeIn">
+      <div
+        className="bg-white rounded-2xl border border-slate-200/90 shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden animate-scaleUp"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
-        <div className="bg-[#0B1325] px-6 py-4 flex items-center justify-between border-b border-slate-800">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0">
+        <div className="bg-[#0B1325] px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between border-b border-slate-800 shrink-0">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 text-blue-400 flex items-center justify-center shrink-0">
               <ShieldCheck className="w-5 h-5 text-blue-400" />
             </div>
-            <div>
-              <h3 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-                <span>{recordToEdit ? 'Edit Marriage Verification Entry' : 'New Marriage Verification Entry'}</span>
-                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+            <div className="min-w-0">
+              <h3 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-2">
+                <span className="truncate">{recordToEdit ? 'Edit Marriage Verification Entry' : 'New Marriage Verification Entry'}</span>
+                <span className="text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 shrink-0">
                   Verify List
                 </span>
               </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-xs text-slate-400 mt-0.5 truncate">
                 Government register verification details for marriage benefit approval
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-400 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5 flex-1 overflow-y-auto">
           {/* Section 1: SL No & Registration & Beneficiary */}
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
             {/* SL NO */}
@@ -194,9 +195,8 @@ export default function AddMarriageVerificationModal({
                   value={formData.regNo}
                   onChange={(e) => setFormData({ ...formData, regNo: e.target.value })}
                   placeholder="e.g. GM123456 / REG-987"
-                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${
-                    errors.regNo ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
+                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${errors.regNo ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                    } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
                 />
               </div>
               {errors.regNo && <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.regNo}</p>}
@@ -235,9 +235,8 @@ export default function AddMarriageVerificationModal({
                   value={formData.beneficiaryName}
                   onChange={(e) => setFormData({ ...formData, beneficiaryName: e.target.value })}
                   placeholder="Enter full name of card holder"
-                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${
-                    errors.beneficiaryName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
+                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${errors.beneficiaryName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                    } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
                 />
               </div>
               {errors.beneficiaryName && <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.beneficiaryName}</p>}
@@ -255,9 +254,8 @@ export default function AddMarriageVerificationModal({
                   value={formData.mobile}
                   onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, '') })}
                   placeholder="e.g. 9876543210"
-                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${
-                    errors.mobile ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
+                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${errors.mobile ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                    } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
                 />
               </div>
               {errors.mobile && <p className="text-[11px] text-rose-500 mt-1 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{errors.mobile}</p>}
@@ -284,9 +282,8 @@ export default function AddMarriageVerificationModal({
                 value={formData.certifyingAuthority}
                 onChange={(e) => setFormData({ ...formData, certifyingAuthority: e.target.value })}
                 placeholder="e.g. Sub-Registrar / Tahasildar"
-                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${
-                  errors.certifyingAuthority ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
+                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${errors.certifyingAuthority ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
               />
               <datalist id="authorityList">
                 <option value="Sub-Registrar" />
@@ -310,9 +307,8 @@ export default function AddMarriageVerificationModal({
                   type="date"
                   value={formData.marriageCertDate}
                   onChange={(e) => setFormData({ ...formData, marriageCertDate: e.target.value })}
-                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${
-                    errors.marriageCertDate ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
+                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${errors.marriageCertDate ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                    } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
                 />
               </div>
               {errors.marriageCertDate && <p className="text-[11px] text-rose-500 mt-1">{errors.marriageCertDate}</p>}
@@ -328,9 +324,8 @@ export default function AddMarriageVerificationModal({
                 value={formData.marriageRegdNo}
                 onChange={(e) => setFormData({ ...formData, marriageRegdNo: e.target.value })}
                 placeholder="e.g. 142/2024"
-                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${
-                  errors.marriageRegdNo ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
+                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${errors.marriageRegdNo ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
               />
               {errors.marriageRegdNo && <p className="text-[11px] text-rose-500 mt-1">{errors.marriageRegdNo}</p>}
             </div>
@@ -364,9 +359,8 @@ export default function AddMarriageVerificationModal({
                   type="date"
                   value={formData.dateOfMarriage}
                   onChange={(e) => setFormData({ ...formData, dateOfMarriage: e.target.value })}
-                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${
-                    errors.dateOfMarriage ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
+                  className={`w-full pl-9 pr-3 py-2 text-xs font-semibold rounded-xl border ${errors.dateOfMarriage ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                    } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20`}
                 />
               </div>
               {errors.dateOfMarriage && <p className="text-[11px] text-rose-500 mt-1">{errors.dateOfMarriage}</p>}
@@ -384,9 +378,8 @@ export default function AddMarriageVerificationModal({
                 value={formData.groomName}
                 onChange={(e) => setFormData({ ...formData, groomName: e.target.value })}
                 placeholder="Full name of Groom"
-                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${
-                  errors.groomName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
+                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${errors.groomName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
               />
               {errors.groomName && <p className="text-[11px] text-rose-500 mt-1">{errors.groomName}</p>}
             </div>
@@ -400,9 +393,8 @@ export default function AddMarriageVerificationModal({
                 value={formData.daughterName}
                 onChange={(e) => setFormData({ ...formData, daughterName: e.target.value })}
                 placeholder="Full name of Daughter / Bride"
-                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${
-                  errors.daughterName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
-                } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
+                className={`w-full px-3 py-2 text-xs font-semibold rounded-xl border ${errors.daughterName ? 'border-rose-400 bg-rose-50/30' : 'border-slate-200 focus:border-blue-500'
+                  } focus:outline-hidden focus:ring-2 focus:ring-blue-500/20 uppercase`}
               />
               {errors.daughterName && <p className="text-[11px] text-rose-500 mt-1">{errors.daughterName}</p>}
             </div>
@@ -423,7 +415,7 @@ export default function AddMarriageVerificationModal({
           </div>
 
           {/* Modal Footer */}
-          <div className="border-t border-slate-100 pt-4 flex items-center justify-end gap-2.5">
+          <div className="border-t border-slate-100 pt-3 sm:pt-4 flex items-center justify-end gap-2.5 shrink-0 bg-slate-50/90 -mx-4 -mb-4 px-4 py-3 sm:-mx-6 sm:-mb-6 sm:px-6">
             <button
               type="button"
               onClick={onClose}
@@ -444,4 +436,6 @@ export default function AddMarriageVerificationModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }

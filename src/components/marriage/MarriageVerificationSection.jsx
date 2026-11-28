@@ -311,7 +311,7 @@ export default function MarriageVerificationSection() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
+          <table className="w-full text-left border-collapse text-xs min-w-[1100px]">
             <thead>
               <tr className="bg-slate-100/90 text-slate-700 font-bold uppercase text-[10px] tracking-wider border-b border-slate-300 divide-x divide-slate-200">
                 <th className="py-3 px-3 text-center w-12">SL NO</th>
@@ -515,7 +515,7 @@ export default function MarriageVerificationSection() {
 
       {/* Delete Confirmation Modal */}
       {recordToDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fadeIn">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fadeIn">
           <div className="bg-white rounded-2xl border border-slate-200 p-6 max-w-md w-full shadow-2xl animate-scaleUp">
             <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4">
               <Trash2 className="w-6 h-6" />
