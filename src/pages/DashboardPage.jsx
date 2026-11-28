@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { 
   FileText, 
   Clock, 
@@ -41,6 +41,10 @@ export default function DashboardPage() {
   } = useApp();
 
   const [trendView, setTrendView] = useState('Daily Trend');
+
+  useEffect(() => {
+    refreshDashboardSummary();
+  }, [refreshDashboardSummary]);
 
   // Renewal count combined
   const renewalsCount = (stats.categoryCounts['Card Renewal'] || 0) + (stats.categoryCounts['Annual Contribution'] || 0);

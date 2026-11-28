@@ -70,3 +70,26 @@ export async function reverseAgentTransaction(payload) {
   }
   return res;
 }
+
+/**
+ * Log a WhatsApp payment reminder, receipt, or confirmation in Agent_Reminder_History
+ */
+export async function logAgentReminder(payload) {
+  const res = await apiPost('logAgentReminder', payload);
+  if (!res || !res.success) {
+    throw new Error((res && res.message) || 'Failed to log reminder activity.');
+  }
+  return res;
+}
+
+/**
+ * Get WhatsApp reminder and receipt history for an agent (or all agents)
+ */
+export async function getAgentReminderHistory(agentId) {
+  const res = await apiPost('getAgentReminderHistory', { agentId });
+  if (!res || !res.success) {
+    return { success: false, history: [] };
+  }
+  return res;
+}
+

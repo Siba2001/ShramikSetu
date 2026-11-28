@@ -44,6 +44,7 @@ var SHEET_USERS = "Users";
 var SHEET_AGENTS = "Agents";
 var SHEET_AGENT_DUES = "Agent_Dues";
 var SHEET_AGENT_PAYMENTS = "Agent_Payments";
+var SHEET_AGENT_REMINDERS = "Agent_Reminder_History";
 var SHEET_LOGS = "Activity_Logs";
 var SHEET_SESSIONS = "Active_Sessions";
 
@@ -237,6 +238,22 @@ var HEADERS_AGENT_PAYMENTS = [
   "Transaction Reference",
   "Remarks",
   "Allocated Dues",
+  "Created By",
+  "Created At"
+];
+
+var HEADERS_AGENT_REMINDERS = [
+  "Reminder ID",
+  "Agent ID",
+  "Agent Name",
+  "Mobile Number",
+  "Due Amount",
+  "Received Amount",
+  "Outstanding Amount",
+  "Message Content",
+  "Message Type",
+  "Language",
+  "Status",
   "Created By",
   "Created At"
 ];
@@ -1389,8 +1406,48 @@ function invalidateScriptCache(keys) {
     } else if (typeof keys === 'string') {
       cache.remove(keys);
     }
+  } catch (e) {}
+}
 
-    // 1. GET ACTIVE APPLICATIONS (from specific module sheet OR aggregated across all module sheets)
+/**
+ * Handle HTTP GET Requests
+ * Supports: getAll, getArchived, getUsers, getAgents, getLogs, ping, getDashboardSummary, getApplicationsPaged, getMarriageVerifications
+ */
+function doGet(e) {
+  try {
+    const action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "getAll";
+    const requestedService = (e && e.parameter && e.parameter.service) ? e.parameter.service : null;
+    const secret = (e && e.parameter && e.parameter.secret) ? e.parameter.secret : null;
+
+    if (action === "ping") {
+      return sendJsonResponse({ success: true, status: "Online", service: "ShramikSetu Backend" });
+    }
+
+    if (action === "getDashboardSummary") {
+      var session = {
+        id: "USR-001",
+        username: "admin",
+        fullName: "System Administrator",
+        role: "Super Admin",
+        district: "All Districts",
+        block: "All Blocks",
+        active: true
+      };
+      return sendJsonResponse(computeDashboardSummary(session, false));
+    }
+
+    if (action === "getApplicationsPaged") {
+      var session = {
+        id: "USR-001",
+        username: "admin",
+        fullName: "System Administrator",
+        role: "Super Admin",
+        district: "All Districts",
+        block: "All Blocks",
+        active: true
+      };
+      return sendJsonResponse(getApplicationsPaged(e && e.parameter ? e.parameter : {}, session));
+    }
     if (action === "getAll") {
       if (requestedService) {
         const targetSheetName = getSheetNameForService(requestedService);
@@ -1516,6 +1573,7 @@ function doPost(e) {
       action === "addAgentDue" ||
       action === "receiveAgentPayment" ||
       action === "reverseAgentTransaction" ||
+      action === "logAgentReminder" ||
       action === "logActivity"
     );
 
@@ -2428,10 +2486,26 @@ function processPostRequest(postData) {
       // ==========================================
       var duesSheet = getOrCreateSheet(SHEET_AGENT_DUES, HEADERS_AGENT_DUES);
       var paymentsSheet = getOrCreateSheet(SHEET_AGENT_PAYMENTS, HEADERS_AGENT_PAYMENTS);
+      var remindersSheet = getOrCreateSheet(SHEET_AGENT_REMINDERS, HEADERS_AGENT_REMINDERS);
 
       if (action === "getAgentPaymentDashboard") {
         var duesData = duesSheet.getDataRange().getValues();
         var paymentsData = paymentsSheet.getDataRange().getValues();
+        var remindersData = remindersSheet.getDataRange().getValues();
+
+        var agentReminderMap = {};
+        if (remindersData.length > 1) {
+          for (var ri = 1; ri < remindersData.length; ri++) {
+            var rRow = remindersData[ri];
+            var rAgentId = String(rRow[1] || "").trim();
+            var rDate = formatCellDate(rRow[12]);
+            if (rAgentId && rDate) {
+              if (!agentReminderMap[rAgentId] || rDate > agentReminderMap[rAgentId]) {
+                agentReminderMap[rAgentId] = rDate;
+              }
+            }
+          }
+        }
 
         var agentMap = {}; // agentId -> { agentId, agentName, totalDue, totalPaid, lastPaymentDate }
 
@@ -2496,7 +2570,8 @@ function processPostRequest(postData) {
             totalDue: s.totalDue,
             totalPaid: s.totalPaid,
             remaining: rem,
-            lastPaymentDate: s.lastPaymentDate
+            lastPaymentDate: s.lastPaymentDate,
+            lastReminderDate: agentReminderMap[s.agentId] || "-"
           });
         });
 
@@ -2867,6 +2942,92 @@ function processPostRequest(postData) {
         }
 
         return sendJsonResponse({ success: false, error: "INVALID_TYPE", message: "Unknown transaction type." });
+      }
+
+      if (action === "logAgentReminder") {
+        var agentId = String(payload.agentId || "").trim();
+        var agentName = String(payload.agentName || "").trim();
+        var mobileNumber = String(payload.mobileNumber || "").trim();
+        var dueAmount = parseFloat(payload.dueAmount) || 0;
+        var receivedAmount = parseFloat(payload.receivedAmount) || 0;
+        var outstandingAmount = parseFloat(payload.outstandingAmount) || 0;
+        var messageContent = sanitizeCell(payload.messageContent || "");
+        var messageType = String(payload.messageType || "Reminder").trim();
+        var language = String(payload.language || "English").trim();
+        var status = String(payload.status || "Sent").trim();
+
+        if (!agentId || !mobileNumber) {
+          return sendJsonResponse({ success: false, error: "INVALID_INPUT", message: "Agent ID and Mobile Number are required." });
+        }
+        if (!messageContent) {
+          return sendJsonResponse({ success: false, error: "EMPTY_MESSAGE", message: "Message content cannot be empty." });
+        }
+
+        var remindersSheet = getOrCreateSheet(SHEET_AGENT_REMINDERS, HEADERS_AGENT_REMINDERS);
+        var reminderId = "REM-" + new Date().getTime();
+        var createdBy = (session && (session.fullName || session.username)) || "Administrator";
+
+        remindersSheet.appendRow([
+          reminderId,
+          agentId,
+          agentName,
+          mobileNumber,
+          dueAmount,
+          receivedAmount,
+          outstandingAmount,
+          messageContent,
+          messageType,
+          language,
+          status,
+          createdBy,
+          now
+        ]);
+
+        logAuditDirect("AGENT_REMINDER_LOGGED", "Logged " + messageType + " via WhatsApp to " + agentName + " (" + mobileNumber + ")", "Payments", reminderId, "Success", session.username, session.role);
+        return sendJsonResponse({
+          success: true,
+          reminderId: reminderId,
+          lastReminderDate: now.slice(0, 10),
+          message: "Reminder activity logged successfully."
+        });
+      }
+
+      if (action === "getAgentReminderHistory") {
+        var targetAgentId = String(payload.agentId || "").trim();
+        var remindersSheet = getOrCreateSheet(SHEET_AGENT_REMINDERS, HEADERS_AGENT_REMINDERS);
+        var data = remindersSheet.getDataRange().getValues();
+        var history = [];
+
+        if (data.length > 1) {
+          for (var i = 1; i < data.length; i++) {
+            var row = data[i];
+            var aId = String(row[1] || "").trim();
+            if (targetAgentId && aId !== targetAgentId) continue;
+
+            history.push({
+              reminderId: String(row[0] || ""),
+              agentId: aId,
+              agentName: String(row[2] || ""),
+              mobileNumber: String(row[3] || ""),
+              dueAmount: parseFloat(row[4]) || 0,
+              receivedAmount: parseFloat(row[5]) || 0,
+              outstandingAmount: parseFloat(row[6]) || 0,
+              messageContent: String(row[7] || ""),
+              messageType: String(row[8] || "Reminder"),
+              language: String(row[9] || "English"),
+              status: String(row[10] || "Sent"),
+              createdBy: String(row[11] || ""),
+              createdAt: String(row[12] || "")
+            });
+          }
+        }
+
+        // Sort descending (latest first)
+        history.sort(function (a, b) {
+          return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+        });
+
+        return sendJsonResponse({ success: true, count: history.length, history: history });
       }
 
       if (action === "logActivity") {

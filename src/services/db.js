@@ -162,7 +162,10 @@ export function saveAgents(agents) {
  */
 export async function fetchAgentsFromBackend() {
   try {
-    const res = await apiGet('getAgents');
+    let res = await apiPost('getAgents', {});
+    if (!res || !res.success) {
+      res = await apiGet('getAgents');
+    }
     if (res && res.success && Array.isArray(res.agents)) {
       saveAgents(res.agents);
       return res.agents;
@@ -539,7 +542,10 @@ export async function fetchApplicationsPaged(params = {}) {
 export async function fetchFromGoogleSheet(serviceType = null) {
   try {
     const params = serviceType ? { service: serviceType } : {};
-    const data = await apiGet('getAll', params);
+    let data = await apiPost('getAll', params);
+    if (!data || !data.success) {
+      data = await apiGet('getAll', params);
+    }
     if (data && data.success && Array.isArray(data.data)) {
       const remoteApps = data.data;
 
@@ -702,7 +708,10 @@ export function deleteMarriageVerification(id) {
  */
 export async function fetchMarriageVerificationsFromBackend() {
   try {
-    const res = await apiGet('getMarriageVerifications');
+    let res = await apiPost('getMarriageVerifications', {});
+    if (!res || !res.success) {
+      res = await apiGet('getMarriageVerifications');
+    }
     if (res && res.success && Array.isArray(res.records)) {
       saveMarriageVerifications(res.records);
       return res.records;

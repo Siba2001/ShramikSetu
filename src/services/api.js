@@ -93,9 +93,21 @@ export async function apiPost(action, payload = {}) {
 
   const startTime = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
   try {
+    let sessionToken = '';
+    if (typeof window !== 'undefined') {
+      try {
+        const rawUser = sessionStorage.getItem('shramiksetu_auth_user') || localStorage.getItem('shramiksetu_auth_user');
+        if (rawUser) {
+          const u = JSON.parse(rawUser);
+          if (u && u.token) sessionToken = u.token;
+        }
+      } catch (e) {}
+    }
+
     const bodyString = JSON.stringify({
       action,
       secret: API_SECRET,
+      sessionToken,
       payload
     });
 
@@ -127,15 +139,21 @@ export async function apiPost(action, payload = {}) {
 
 /**
  * High-Speed API Helper: Fetch Pre-Aggregated Dashboard Summary
+ * Tries POST first (avoids browser URL caching), falls back to GET
  */
 export async function fetchDashboardSummaryApi() {
+  const postRes = await apiPost('getDashboardSummary', {});
+  if (postRes && postRes.success) return postRes;
   return await apiGet('getDashboardSummary');
 }
 
 /**
  * High-Speed API Helper: Fetch Paginated & Filtered Applications
+ * Tries POST first (supports complex filters), falls back to GET
  */
 export async function fetchApplicationsPagedApi(params = {}) {
+  const postRes = await apiPost('getApplicationsPaged', params);
+  if (postRes && postRes.success) return postRes;
   return await apiGet('getApplicationsPaged', params);
 }
 

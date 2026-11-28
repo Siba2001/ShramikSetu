@@ -15,7 +15,9 @@ import {
   ChevronRight, 
   Filter,
   AlertTriangle,
-  FileSpreadsheet
+  FileSpreadsheet,
+  MessageSquare,
+  Receipt
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useApp } from '../context/AppContext';
@@ -27,6 +29,8 @@ import {
 import AddDueModal from '../components/payments/AddDueModal';
 import ReceivePaymentModal from '../components/payments/ReceivePaymentModal';
 import PaymentHistoryModal from '../components/payments/PaymentHistoryModal';
+import WhatsAppReminderModal from '../components/payments/WhatsAppReminderModal';
+import ReminderHistoryModal from '../components/payments/ReminderHistoryModal';
 
 export default function AgentPaymentsPage() {
   const { agents, showToast } = useApp();
@@ -53,6 +57,10 @@ export default function AgentPaymentsPage() {
   const [isAddDueOpen, setIsAddDueOpen] = useState(false);
   const [isReceivePaymentOpen, setIsReceivePaymentOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
+  const [whatsAppMode, setWhatsAppMode] = useState('reminder'); // 'reminder' | 'receipt' | 'confirmation'
+  const [whatsAppPaymentDetails, setWhatsAppPaymentDetails] = useState(null);
+  const [isReminderHistoryOpen, setIsReminderHistoryOpen] = useState(false);
 
   // Fetch dashboard stats & agent payment records
   const loadPaymentData = useCallback(async () => {
@@ -113,7 +121,8 @@ export default function AgentPaymentsPage() {
         totalPaid,
         remaining,
         paymentStatus,
-        lastPaymentDate: summary.lastPaymentDate || '-'
+        lastPaymentDate: summary.lastPaymentDate || '-',
+        lastReminderDate: summary.lastReminderDate || '-'
       };
     });
   }, [agents, dashboardData.agentSummaries]);
@@ -185,6 +194,30 @@ export default function AgentPaymentsPage() {
     setIsHistoryOpen(true);
   };
 
+  const handleOpenWhatsAppReminder = (agent, mode = 'reminder') => {
+    setSelectedAgent(agent);
+    setWhatsAppMode(mode);
+    setWhatsAppPaymentDetails(null);
+    setIsWhatsAppOpen(true);
+  };
+
+  const handleOpenWhatsAppConfirmation = (agent, details) => {
+    setSelectedAgent(agent);
+    setWhatsAppMode('confirmation');
+    setWhatsAppPaymentDetails(details);
+    setIsWhatsAppOpen(true);
+  };
+
+  const handleOpenReminderHistory = (agent) => {
+    setSelectedAgent(agent);
+    setIsReminderHistoryOpen(true);
+  };
+
+  const handleReminderSuccess = (ag, msgType) => {
+    showToast('success', `${msgType} logged successfully for ${ag.name}.`);
+    loadPaymentData();
+  };
+
   const handleAddDueSubmit = async (payload) => {
     await addAgentDue(payload);
     showToast('success', `Due of ₹${payload.dueAmount} recorded for ${payload.agentName}.`);
@@ -209,7 +242,8 @@ export default function AgentPaymentsPage() {
       'Total Paid Amount (INR)': a.totalPaid,
       'Remaining Amount (INR)': a.remaining,
       'Payment Status': a.paymentStatus,
-      'Last Payment Date': a.lastPaymentDate
+      'Last Payment Date': a.lastPaymentDate,
+      'Last Reminder Date': a.lastReminderDate
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -418,13 +452,14 @@ export default function AgentPaymentsPage() {
                 <th className="py-3 px-3.5 text-right">Remaining</th>
                 <th className="py-3 px-3.5 text-center">Payment Status</th>
                 <th className="py-3 px-3.5 text-center">Last Payment Date</th>
+                <th className="py-3 px-3.5 text-center">Last Reminder Date</th>
                 <th className="py-3 px-3.5 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {paginatedRows.length === 0 ? (
                 <tr>
-                  <td colSpan="9" className="py-12 text-center text-slate-400">
+                  <td colSpan="10" className="py-12 text-center text-slate-400">
                     <Users className="w-8 h-8 mx-auto mb-2 text-slate-300" />
                     <p className="font-semibold text-slate-600">No agent payment records match your filters</p>
                     <p className="text-xs text-slate-400 mt-1">Try clearing your search query or status filter.</p>
@@ -462,8 +497,39 @@ export default function AgentPaymentsPage() {
                       <td className="py-3 px-3.5 text-center text-slate-600 font-medium">
                         {agent.lastPaymentDate}
                       </td>
+                      <td className="py-3 px-3.5 text-center text-slate-600 font-medium">
+                        {agent.lastReminderDate !== '-' ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] font-mono text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                            <MessageSquare className="w-3 h-3 text-emerald-600" />
+                            {agent.lastReminderDate}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 font-mono text-xs">-</span>
+                        )}
+                      </td>
                       <td className="py-3 px-3.5 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* WhatsApp Reminder or Receipt Button */}
+                          {agent.remaining > 0 ? (
+                            <button
+                              onClick={() => handleOpenWhatsAppReminder(agent, 'reminder')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 transition-colors shadow-2xs"
+                              title="Send WhatsApp Payment Reminder"
+                            >
+                              <MessageSquare className="w-3.5 h-3.5" />
+                              <span>Remind</span>
+                            </button>
+                          ) : agent.totalDue > 0 ? (
+                            <button
+                              onClick={() => handleOpenWhatsAppReminder(agent, 'receipt')}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 transition-colors shadow-2xs"
+                              title="Send WhatsApp Payment Receipt"
+                            >
+                              <Receipt className="w-3.5 h-3.5 text-emerald-700" />
+                              <span>Receipt</span>
+                            </button>
+                          ) : null}
+
                           {/* Add Due */}
                           <button
                             onClick={() => handleOpenAddDue(agent)}
@@ -493,6 +559,15 @@ export default function AgentPaymentsPage() {
                           >
                             <History className="w-3.5 h-3.5" />
                             <span>History</span>
+                          </button>
+
+                          {/* View Reminder Logs */}
+                          <button
+                            onClick={() => handleOpenReminderHistory(agent)}
+                            className="inline-flex items-center gap-1 p-1.5 rounded-lg text-xs font-medium text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 border border-transparent hover:border-emerald-200 transition-colors"
+                            title="View WhatsApp Reminder History"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>
@@ -548,6 +623,7 @@ export default function AgentPaymentsPage() {
           outstanding: selectedAgent.remaining
         } : null}
         onSubmit={handleReceivePaymentSubmit}
+        onShareWhatsApp={(ag, details) => handleOpenWhatsAppConfirmation(ag, details)}
       />
 
       <PaymentHistoryModal
@@ -555,6 +631,23 @@ export default function AgentPaymentsPage() {
         onClose={() => setIsHistoryOpen(false)}
         agent={selectedAgent}
         onTransactionUpdated={loadPaymentData}
+      />
+
+      {/* WhatsApp Click-to-Chat Reminder & Receipt Modal */}
+      <WhatsAppReminderModal
+        isOpen={isWhatsAppOpen}
+        onClose={() => setIsWhatsAppOpen(false)}
+        agent={selectedAgent}
+        mode={whatsAppMode}
+        paymentDetails={whatsAppPaymentDetails}
+        onSuccess={handleReminderSuccess}
+      />
+
+      {/* WhatsApp Communication History Modal */}
+      <ReminderHistoryModal
+        isOpen={isReminderHistoryOpen}
+        onClose={() => setIsReminderHistoryOpen(false)}
+        agent={selectedAgent}
       />
     </div>
   );

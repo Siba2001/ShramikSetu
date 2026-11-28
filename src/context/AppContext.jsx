@@ -235,6 +235,15 @@ export function AppProvider({ children }) {
     // Refresh lightweight pre-aggregated dashboard KPIs first
     refreshDashboardSummary();
 
+    // If local applications cache is empty (e.g. after clearing cookies/localStorage), hydrate from Google Sheets
+    if (!apps || apps.length === 0) {
+      fetchFromGoogleSheet().then(liveApps => {
+        if (liveApps && Array.isArray(liveApps) && liveApps.length > 0) {
+          setApplications(liveApps);
+        }
+      }).catch(() => {});
+    }
+
     // Sync live agents directly from database
     fetchAgentsFromBackend().then(liveAgents => {
       if (liveAgents && Array.isArray(liveAgents)) {
